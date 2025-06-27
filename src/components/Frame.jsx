@@ -294,7 +294,9 @@ export default function Frame({ children }) {
               sx={{
                 display: "inline-block",
                 whiteSpace: "nowrap",
-                fontSize: "0.875rem",
+                fontSize: "0.9rem", // Slightly increased font size
+                fontWeight: "medium", // Added font weight
+                letterSpacing: "0.2px", // Tighter letter spacing
                 color: theme.palette.mode === "dark" ? "#fff" : "#000",
                 px: 2,
                 animation: "marquee 15s linear infinite",
