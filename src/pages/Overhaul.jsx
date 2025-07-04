@@ -1,412 +1,410 @@
-import React, { useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  TextField, 
-  Button, 
-  Grid,
-  Card,
-  CardContent,
-  LinearProgress,
-  Divider,
-  Select,
-  MenuItem,
-  InputLabel,
-  FormControl,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  Chip,
-  Tabs,
-  Tab
+import React, { useState, useEffect } from 'react';
+import {
+  Box, Typography, Card, CardContent, Grid, Table, TableHead,
+  TableRow, TableCell, TableBody, TableContainer, Paper, TextField,
+  Button, IconButton, Snackbar, Alert, Tooltip, Chip,
+  Drawer, MenuItem, FormControl, InputLabel, Select, LinearProgress,
+  Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
 } from '@mui/material';
-import { DataGrid } from '@mui/x-data-grid';
-import { Save, Print, Delete, Add, Edit, Build, Settings } from '@mui/icons-material';
+import {
+  Add, Delete, Edit, Download, Close, InfoOutlined
+} from '@mui/icons-material';
+import EngineeringIcon from '@mui/icons-material/Engineering'; // Icon baru untuk overhaul
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format, parseISO, isPast, isToday, addDays } from 'date-fns';
+import { id } from 'date-fns/locale'; // Untuk format tanggal Indonesia
 
-// Data awal untuk overhaul
-const initialOverhaulData = [
-  {
-    id: 1,
-    name: "Overhaul Point Machine KA-101",
-    progress: 0,
-    location: "Stasiun Gambir",
-    machineType: "Point Machine Type-A",
-    lastMaintenance: "2023-01-15",
-    nextMaintenance: "2023-07-15",
-    materials: [],
-    target: 1,
-    completed: 0,
-    type: "overhaul"
-  },
-  {
-    id: 2,
-    name: "Overhaul Point Machine KA-202",
-    progress: 0,
-    location: "Stasiun Bandung",
-    machineType: "Point Machine Type-B",
-    lastMaintenance: "2023-02-20",
-    nextMaintenance: "2023-08-20",
-    materials: [],
-    target: 1,
-    completed: 0,
-    type: "overhaul"
-  }
-];
-
-const Overhaul = () => {
-  const [overhaulData, setOverhaulData] = useState(initialOverhaulData);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [materialInput, setMaterialInput] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [selectedRows, setSelectedRows] = useState([]);
-  const [openDialog, setOpenDialog] = useState(false);
+export default function OverhaulPoint() {
+  const [data, setData] = useState([
+    { id: 1, name: 'KRD CC201-01', lokasi: 'Balai Yasa Yogyakarta', status: 'Proses', estimasi: '2025-07-20', progress: 75 },
+    { id: 2, name: 'PM 202-EX', lokasi: 'Dipo Jakarta', status: 'Selesai', estimasi: '2025-07-01', progress: 100 },
+    { id: 3, name: 'Signal 7A', lokasi: 'Bandung Selatan', status: 'Pending', estimasi: '2025-08-10', progress: 0 },
+    { id: 4, name: 'Lokomotif BB304', lokasi: 'Balai Yasa Surabaya', status: 'Proses', estimasi: '2025-07-08', progress: 40 },
+    { id: 5, name: 'Gerbong Barang', lokasi: 'Gudang Cirebon', status: 'Selesai', estimasi: '2025-06-15', progress: 100 },
+  ]);
+  const [search, setSearch] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [openDrawer, setOpenDrawer] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [currentItem, setCurrentItem] = useState({ id: null, name: '', lokasi: '', status: '', estimasi: '', progress: 0 });
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
-  const [currentOverhaul, setCurrentOverhaul] = useState({
-    id: 0,
-    name: '',
-    location: '',
-    machineType: '',
-    lastMaintenance: '',
-    nextMaintenance: '',
-    target: 1,
-    type: "overhaul"
-  });
+  const filteredData = data.filter(d =>
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    d.lokasi.toLowerCase().includes(search.toLowerCase()) ||
+    d.status.toLowerCase().includes(search.toLowerCase())
+  );
 
-  // Kolom untuk DataGrid Overhaul
-  const overhaulColumns = [
-    { field: 'id', headerName: 'ID', width: 70 },
-    { field: 'name', headerName: 'Nama Proyek', width: 250 },
-    { field: 'location', headerName: 'Lokasi', width: 150 },
-    { field: 'machineType', headerName: 'Tipe Mesin', width: 150 },
-    { field: 'lastMaintenance', headerName: 'Maintenance Terakhir', width: 180 },
-    { field: 'nextMaintenance', headerName: 'Maintenance Berikutnya', width: 180 },
-    {
-      field: 'progress',
-      headerName: 'Progress',
-      width: 150,
-      renderCell: (params) => (
-        <Box sx={{ width: '100%' }}>
-          <LinearProgress 
-            variant="determinate" 
-            value={params.row.progress} 
-            sx={{ height: 8, borderRadius: 4 }} 
-          />
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            {params.row.progress}%
-          </Typography>
-        </Box>
-      ),
-    },
-    {
-      field: 'actions',
-      headerName: 'Aksi',
-      width: 120,
-      renderCell: (params) => (
-        <Box>
-          <IconButton onClick={() => handleEditOverhaul(params.row)}>
-            <Edit fontSize="small" />
-          </IconButton>
-          <IconButton onClick={() => handleDeleteOverhaul(params.row.id)}>
-            <Delete fontSize="small" color="error" />
-          </IconButton>
-        </Box>
-      ),
-    },
-  ];
-
-  const handleClickOpenOverhaul = () => {
-    setOpenDialog(true);
-    setEditMode(false);
-    setCurrentOverhaul({
-      id: 0,
-      name: '',
-      location: '',
-      machineType: '',
-      lastMaintenance: '',
-      nextMaintenance: '',
-      target: 1,
-      type: "overhaul"
-    });
-  };
-
-  const handleClose = () => {
-    setOpenDialog(false);
-  };
-
-  const handleSaveOverhaul = () => {
-    if (editMode) {
-      // Update existing overhaul
-      setOverhaulData(overhaulData.map(item => 
-        item.id === currentOverhaul.id ? currentOverhaul : item
-      ));
+  const handleOpenDrawer = (item = null) => {
+    if (item) {
+      setEditMode(true);
+      setCurrentItem({
+        ...item,
+        estimasi: item.estimasi || '' // Pastikan estimasi tidak undefined untuk input date
+      });
     } else {
-      // Add new overhaul
-      const newId = Math.max(...overhaulData.map(item => item.id)) + 1;
-      setOverhaulData([...overhaulData, {
-        ...currentOverhaul,
-        id: newId,
-        progress: 0,
-        materials: [],
-        completed: 0
-      }]);
+      setEditMode(false);
+      setCurrentItem({ id: null, name: '', lokasi: '', status: 'Proses', estimasi: '', progress: 0 });
     }
-    handleClose();
+    setOpenDrawer(true);
   };
 
-  const handleEditOverhaul = (overhaul) => {
-    setCurrentOverhaul(overhaul);
-    setEditMode(true);
-    setOpenDialog(true);
+  const handleCloseDrawer = () => {
+    setOpenDrawer(false);
   };
 
-  const handleDeleteOverhaul = (id) => {
-    setOverhaulData(overhaulData.filter(item => item.id !== id));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setCurrentItem(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddMaterial = () => {
-    if (!selectedProject || !materialInput) return;
-    
-    const updatedData = overhaulData.map(item => {
-      if (item.id === selectedProject.id) {
-        const newMaterial = {
-          name: materialInput,
-          quantity: quantity
-        };
-        return {
-          ...item,
-          materials: [...item.materials, newMaterial]
-        };
-      }
-      return item;
+  const handleSave = () => {
+    if (!currentItem.name || !currentItem.lokasi || !currentItem.status || !currentItem.estimasi) {
+      setSnackbar({ open: true, message: 'Semua kolom wajib diisi!', severity: 'error' });
+      return;
+    }
+
+    if (editMode) {
+      setData(prev => prev.map(item =>
+        item.id === currentItem.id ? { ...currentItem, progress: Number(currentItem.progress) } : item
+      ));
+      setSnackbar({ open: true, message: 'Data overhaul berhasil diperbarui!', severity: 'success' });
+    } else {
+      const newId = data.length ? Math.max(...data.map(d => d.id)) + 1 : 1;
+      setData(prev => [...prev, { ...currentItem, id: newId, progress: Number(currentItem.progress) }]);
+      setSnackbar({ open: true, message: 'Data overhaul berhasil ditambahkan!', severity: 'success' });
+    }
+    handleCloseDrawer();
+  };
+
+  const handleDeleteClick = (id) => {
+    setItemToDelete(id);
+    setDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    setData(prev => prev.filter(item => item.id !== itemToDelete));
+    setSnackbar({ open: true, message: 'Data overhaul berhasil dihapus!', severity: 'info' });
+    setDialogOpen(false);
+    setItemToDelete(null);
+  };
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false);
+    setItemToDelete(null);
+  };
+
+  const exportExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredData.map(({ id, ...rest }) => rest)); // Exclude ID
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Overhaul');
+    XLSX.writeFile(wb, `Laporan_Overhaul_Point_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`);
+    setSnackbar({ open: true, message: 'Data diekspor ke Excel!', severity: 'success' });
+  };
+
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Laporan Overhaul Point Machine', 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Tanggal Cetak: ${format(new Date(), 'dd MMMM yyyy HH:mm', { locale: id })}`, 14, 22);
+
+    autoTable(doc, {
+      startY: 30,
+      head: [['Nama', 'Lokasi', 'Status', 'Estimasi Selesai', 'Progres']],
+      body: filteredData.map(i => [
+        i.name,
+        i.lokasi,
+        i.status,
+        format(parseISO(i.estimasi), 'dd MMMM yyyy', { locale: id }),
+        `${i.progress}%`
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: 'bold' },
+      margin: { top: 25 },
     });
-    
-    setOverhaulData(updatedData);
-    setMaterialInput('');
-    setQuantity(1);
+    doc.save(`Laporan_Overhaul_Point_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
+    setSnackbar({ open: true, message: 'Data diekspor ke PDF!', severity: 'success' });
   };
 
-  const handleDeleteSelected = () => {
-    setOverhaulData(overhaulData.filter(item => !selectedRows.includes(item.id)));
-    setSelectedRows([]);
+  const getStatusColor = (status) => {
+    if (status === 'Selesai') return 'success';
+    if (status === 'Proses') return 'warning';
+    if (status === 'Pending') return 'info';
+    return 'default';
   };
+
+  const getEstimasiWarning = (estimasiDate) => {
+    if (!estimasiDate || currentItem.status === 'Selesai') return null;
+    const date = parseISO(estimasiDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
+
+    if (isPast(date) && !isToday(date)) {
+      return { text: 'Terlambat!', color: 'error' };
+    }
+    if (date <= addDays(today, 7)) { // Within 7 days
+      return { text: 'Mendekati Deadline!', color: 'warning' };
+    }
+    return null;
+  };
+
+  const totalOverhaul = data.length;
+  const inProgress = data.filter(item => item.status === 'Proses').length;
+  const completed = data.filter(item => item.status === 'Selesai').length;
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ mb: 3, color: '#333', fontWeight: 'bold' }}>
-        Sistem Manajemen Overhaul Point Machine
-      </Typography>
+    <Box sx={{ p: { xs: 2, md: 4 } }}>
+      <Box display="flex" alignItems="center" mb={3}>
+        <EngineeringIcon sx={{ color: '#007BFF', fontSize: 36, mr: 2 }} />
+        <Typography variant="h4" fontWeight="bold">Manajemen Overhaul Point Machine</Typography>
+      </Box>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
-          <Card sx={{ boxShadow: 3 }}>
+      {/* Ringkasan Data */}
+      <Grid container spacing={2} mb={3}>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card elevation={2}>
             <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                <Typography variant="h6">Daftar Proyek Overhaul</Typography>
-                <Box>
-                  <Button 
-                    variant="contained" 
-                    startIcon={<Add />}
-                    onClick={handleClickOpenOverhaul}
-                    sx={{ mr: 1 }}
-                  >
-                    Tambah
-                  </Button>
-                  <Button 
-                    variant="outlined" 
-                    startIcon={<Delete />}
-                    onClick={handleDeleteSelected}
-                    disabled={selectedRows.length === 0}
-                    color="error"
-                  >
-                    Hapus
-                  </Button>
-                </Box>
-              </Box>
-              
-              <div style={{ height: 400, width: '100%' }}>
-                <DataGrid
-                  rows={overhaulData}
-                  columns={overhaulColumns}
-                  pageSize={5}
-                  rowsPerPageOptions={[5]}
-                  checkboxSelection
-                  onSelectionModelChange={(newSelection) => {
-                    setSelectedRows(newSelection);
-                  }}
-                />
-              </div>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Item Overhaul</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold">{totalOverhaul}</Typography>
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card sx={{ boxShadow: 3 }}>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card elevation={2}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Detail Proyek
-              </Typography>
-              
-              {selectedProject ? (
-                <>
-                  <Typography variant="subtitle1">
-                    <strong>Nama:</strong> {selectedProject.name}
-                  </Typography>
-                  <Typography variant="subtitle1">
-                    <strong>Lokasi:</strong> {selectedProject.location}
-                  </Typography>
-                  <Typography variant="subtitle1">
-                    <strong>Tipe Mesin:</strong> {selectedProject.machineType}
-                  </Typography>
-                  <Typography variant="subtitle1">
-                    <strong>Maintenance Terakhir:</strong> {selectedProject.lastMaintenance}
-                  </Typography>
-                  <Typography variant="subtitle1">
-                    <strong>Maintenance Berikutnya:</strong> {selectedProject.nextMaintenance}
-                  </Typography>
-                  
-                  <Divider sx={{ my: 2 }} />
-                  
-                  <Typography variant="subtitle1">
-                    <strong>Progress:</strong>
-                  </Typography>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={selectedProject.progress} 
-                    sx={{ height: 8, borderRadius: 4, mb: 2 }} 
-                  />
-                  
-                  <Typography variant="subtitle1">
-                    <strong>Material:</strong>
-                  </Typography>
-                  <Box sx={{ mt: 1, mb: 2 }}>
-                    {selectedProject.materials.map((material, index) => (
-                      <Chip 
-                        key={index}
-                        label={`${material.name} (${material.quantity})`}
-                        sx={{ mr: 1, mb: 1 }}
-                        onDelete={() => {}}
-                      />
-                    ))}
-                  </Box>
-                  
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField
-                      label="Material"
-                      fullWidth
-                      size="small"
-                      value={materialInput}
-                      onChange={(e) => setMaterialInput(e.target.value)}
-                    />
-                    <TextField
-                      label="Qty"
-                      type="number"
-                      size="small"
-                      sx={{ width: 80 }}
-                      value={quantity}
-                      onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-                    />
-                    <Button 
-                      variant="contained"
-                      onClick={handleAddMaterial}
-                      disabled={!materialInput}
-                    >
-                      Tambah
-                    </Button>
-                  </Box>
-                </>
-              ) : (
-                <Typography variant="body1" color="text.secondary">
-                  Pilih proyek untuk melihat detail
-                </Typography>
-              )}
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Sedang Proses</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="warning.main">{inProgress}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Telah Selesai</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="success.main">{completed}</Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Dialog Form Overhaul */}
-      <Dialog open={openDialog} onClose={handleClose}>
-        <DialogTitle>
-          {editMode ? 'Edit Proyek Overhaul' : 'Tambah Proyek Overhaul'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2, minWidth: 400 }}>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Nama Proyek"
-              fullWidth
-              value={currentOverhaul.name}
-              onChange={(e) => setCurrentOverhaul({...currentOverhaul, name: e.target.value})}
-              sx={{ mb: 2 }}
-              required
-            />
-            
-            <TextField
-              margin="dense"
-              label="Lokasi"
-              fullWidth
-              value={currentOverhaul.location}
-              onChange={(e) => setCurrentOverhaul({...currentOverhaul, location: e.target.value})}
-              sx={{ mb: 2 }}
-              required
-            />
-            
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Tipe Mesin</InputLabel>
-              <Select
-                value={currentOverhaul.machineType}
-                label="Tipe Mesin"
-                onChange={(e) => setCurrentOverhaul({...currentOverhaul, machineType: e.target.value})}
-                required
-              >
-                <MenuItem value="Point Machine Type-A">Type-A</MenuItem>
-                <MenuItem value="Point Machine Type-B">Type-B</MenuItem>
-                <MenuItem value="Point Machine Type-C">Type-C</MenuItem>
-              </Select>
-            </FormControl>
-            
-            <TextField
-              margin="dense"
-              label="Maintenance Terakhir"
-              type="date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={currentOverhaul.lastMaintenance}
-              onChange={(e) => setCurrentOverhaul({...currentOverhaul, lastMaintenance: e.target.value})}
-              sx={{ mb: 2 }}
-              required
-            />
-            
-            <TextField
-              margin="dense"
-              label="Maintenance Berikutnya"
-              type="date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={currentOverhaul.nextMaintenance}
-              onChange={(e) => setCurrentOverhaul({...currentOverhaul, nextMaintenance: e.target.value})}
-              sx={{ mb: 2 }}
-              required
-            />
+      {/* Filter & Aksi */}
+      <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2} mb={3} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
+        <TextField
+          size="small"
+          label="Cari Nama/Lokasi/Status"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ flexGrow: 1 }}
+        />
+        <Box display="flex" gap={1} flexWrap="wrap">
+          <Button variant="outlined" startIcon={<Download />} onClick={exportExcel}>Excel</Button>
+          <Button variant="outlined" startIcon={<Download />} onClick={exportPDF}>PDF</Button>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
+            onClick={() => handleOpenDrawer()}
+          >
+            Tambah Overhaul
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Tabel Overhaul */}
+      <TableContainer component={Paper} elevation={2}>
+        <Table>
+          <TableHead sx={{ bgcolor: '#f5f5f5' }}>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 'bold' }}>Nama Item</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Lokasi</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Estimasi Selesai</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Progres</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 'bold' }}>Aksi</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredData.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} align="center">Tidak ada data overhaul ditemukan.</TableCell>
+              </TableRow>
+            ) : (
+              filteredData.map(item => (
+                <TableRow key={item.id} hover>
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.lokasi}</TableCell>
+                  <TableCell>
+                    <Chip label={item.status} color={getStatusColor(item.status)} size="small" />
+                  </TableCell>
+                  <TableCell>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      {item.estimasi ? format(parseISO(item.estimasi), 'dd MMMM yyyy', { locale: id }) : '-'}
+                      {getEstimasiWarning(item.estimasi) && (
+                        <Tooltip title={getEstimasiWarning(item.estimasi).text}>
+                          <InfoOutlined color={getEstimasiWarning(item.estimasi).color} fontSize="small" />
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100px' }}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={item.progress}
+                        sx={{
+                          width: '100%',
+                          height: 8,
+                          borderRadius: 5,
+                          backgroundColor: '#e0e0e0',
+                          '& .MuiLinearProgress-bar': {
+                            backgroundColor: item.progress === 100 ? '#4caf50' : '#2196f3',
+                          },
+                        }}
+                      />
+                      <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>{`${Math.round(item.progress)}%`}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip title="Edit">
+                      <IconButton onClick={() => handleOpenDrawer(item)}><Edit color="primary" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title="Hapus">
+                      <IconButton onClick={() => handleDeleteClick(item.id)}><Delete color="error" /></IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Drawer Tambah/Edit */}
+      <Drawer
+        anchor="right"
+        open={openDrawer}
+        onClose={handleCloseDrawer}
+        PaperProps={{ sx: { width: { xs: '90%', sm: 450 } } }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h6" fontWeight="bold">{editMode ? 'Edit Item Overhaul' : 'Tambah Item Overhaul Baru'}</Typography>
+            <IconButton onClick={handleCloseDrawer}><Close /></IconButton>
           </Box>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Nama Item"
+                name="name"
+                value={currentItem.name}
+                onChange={handleChange}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Lokasi"
+                name="lokasi"
+                value={currentItem.lokasi}
+                onChange={handleChange}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth required>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  name="status"
+                  value={currentItem.status}
+                  label="Status"
+                  onChange={handleChange}
+                >
+                  <MenuItem value="Proses">Proses</MenuItem>
+                  <MenuItem value="Selesai">Selesai</MenuItem>
+                  <MenuItem value="Pending">Pending</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Estimasi Selesai"
+                type="date"
+                name="estimasi"
+                value={currentItem.estimasi}
+                onChange={handleChange}
+                InputLabelProps={{ shrink: true }}
+                required
+              />
+            </Grid>
+            {currentItem.status === 'Proses' && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Progres (%)"
+                  type="number"
+                  name="progress"
+                  value={currentItem.progress}
+                  onChange={handleChange}
+                  inputProps={{ min: 0, max: 100 }}
+                  helperText="Isi progres dalam persentase (0-100)"
+                />
+              </Grid>
+            )}
+            <Grid item xs={12}>
+              <Button
+                variant="contained"
+                sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' }, mt: 2 }}
+                fullWidth
+                onClick={handleSave}
+              >
+                {editMode ? 'Perbarui Data' : 'Tambah Data'}
+              </Button>
+            </Grid>
+          </Grid>
+        </Box>
+      </Drawer>
+
+      {/* Dialog Konfirmasi Hapus */}
+      <Dialog
+        open={dialogOpen}
+        onClose={handleCloseDialog}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">{"Konfirmasi Penghapusan"}</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            Apakah Anda yakin ingin menghapus data overhaul ini? Tindakan ini tidak dapat dibatalkan.
+          </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose}>Batal</Button>
-          <Button 
-            onClick={handleSaveOverhaul}
-            variant="contained"
-            disabled={!currentOverhaul.name || !currentOverhaul.location || !currentOverhaul.machineType}
-          >
-            Simpan
+          <Button onClick={handleCloseDialog} color="primary">
+            Batal
+          </Button>
+          <Button onClick={handleConfirmDelete} color="error" autoFocus>
+            Hapus
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar Notifikasi */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
-};
-
-export default Overhaul;
+}

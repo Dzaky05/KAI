@@ -1,4 +1,5 @@
-import * as React from "react";
+import React, { useState, useEffect, useContext } from 'react';
+
 import {
   styled,
   useTheme,
@@ -29,7 +30,7 @@ import BuildIcon from "@mui/icons-material/Build";
 import ScienceIcon from "@mui/icons-material/Science";
 import PeopleIcon from "@mui/icons-material/People";
 import StorageIcon from "@mui/icons-material/Storage";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, Outlet } from "react-router-dom";
 import {
   Avatar,
   Collapse,
@@ -37,7 +38,6 @@ import {
   MenuItem,
   Tooltip,
   Badge,
-  Switch, // Not used but kept for completeness from original
 } from "@mui/material";
 import {
   ExpandLess,
@@ -48,10 +48,11 @@ import {
   Brightness4,
   Brightness7,
 } from "@mui/icons-material";
-import kaiLogo from "../assets/logokai.png";
+import kaiLogo from "../assets/logokai.png"; // Pastikan path ini benar
 
 const drawerWidth = 240;
 
+// Styled component untuk Main content area
 const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
   ({ theme, open }) => ({
     flexGrow: 1,
@@ -73,14 +74,15 @@ const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
   })
 );
 
+// Styled component untuk AppBar
 const AppBar = styled(MuiAppBar, {
   shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
-  // App Bar background: Orange for dark mode, Blue for light mode
+  // App Bar background: Orange for light mode, Blue for dark mode
   background:
     theme.palette.mode === "dark"
-      ? "linear-gradient(to right, #1976d2, #2196f3)" // Blue gradient for dark mode (SWAPPED)
-      : "linear-gradient(to right, #FF8C00, #FFA500)", // Orange gradient for light mode (SWAPPED)
+      ? "linear-gradient(to right, #1976d2, #2196f3)" // Blue gradient for dark mode
+      : "linear-gradient(to right, #FF8C00, #FFA500)", // Orange gradient for light mode
   boxShadow: theme.shadows[4],
   transition: theme.transitions.create(["margin", "width"], {
     easing: theme.transitions.easing.sharp,
@@ -97,24 +99,19 @@ const AppBar = styled(MuiAppBar, {
   zIndex: theme.zIndex.drawer + 1,
 }));
 
+// Styled component untuk Drawer Header
 const DrawerHeader = styled("div")(({ theme }) => ({
   display: "flex",
   alignItems: "center",
   padding: theme.spacing(0, 1),
   ...theme.mixins.toolbar,
   justifyContent: "space-between",
-  // Drawer Header background adjusts to theme mode
-  background:
-    theme.palette.mode === "dark"
-      ? "rgba(25, 118, 210, 0.1)" // Light blue tint for dark mode (SWAPPED)
-      : "rgba(255, 165, 0, 0.1)", // Light orange tint for light mode (SWAPPED)
-  borderBottom: `1px solid ${
-    theme.palette.mode === "dark"
-      ? "rgba(255,255,255,0.1)"
-      : "rgba(0,0,0,0.1)"
-  }`,
+  // Drawer Header background: consistent light grey for visibility
+  background: '#F0F0F0', // A light grey to stand out slightly from the white sidebar body
+  borderBottom: `1px solid rgba(0,0,0,0.1)`, // Consistent light border
 }));
 
+// Styled component untuk Notification Badge
 const NotificationBadge = styled(Badge)(({ theme }) => ({
   "& .MuiBadge-badge": {
     right: -3,
@@ -123,22 +120,32 @@ const NotificationBadge = styled(Badge)(({ theme }) => ({
     padding: "0 4px",
     background: theme.palette.error.main,
     color: theme.palette.common.white,
+    boxShadow: theme.shadows[1], // Added subtle shadow for badge
   },
 }));
 
 // Create the context for color mode
 const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 
-export default function Frame({ children }) {
+/**
+ * Frame Component
+ * Ini adalah komponen layout utama yang mencakup AppBar, Drawer (Sidebar),
+ * dan area konten utama.
+ *
+ * @param {Function} onLogout - Fungsi callback untuk menangani logout.
+ */
+export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
   const theme = useTheme();
-  // Consume the context to get the toggleColorMode function
+  // Menggunakan useContext untuk mengakses fungsi toggleColorMode dari ColorModeContext
   const colorMode = React.useContext(ColorModeContext);
-  const [open, setOpen] = React.useState(true);
-  const location = useLocation();
-  const [anchorEl, setAnchorEl] = React.useState(null);
-  const [notifications] = React.useState(3);
+  const [open, setOpen] = React.useState(true); // State untuk mengontrol buka/tutup drawer
+  const location = useLocation(); // Hook untuk mendapatkan informasi lokasi URL saat ini
+  const [anchorEl, setAnchorEl] = React.useState(null); // State untuk mengontrol menu profil
+  const [notifications] = React.useState(3); // State dummy untuk jumlah notifikasi
+  // State untuk mengelola status buka/tutup sub-menu di sidebar
+  const [openCollapse, setOpenCollapse] = React.useState({});
 
-  const profile = Boolean(anchorEl);
+  const profile = Boolean(anchorEl); // Mengecek apakah menu profil sedang terbuka
   const handleOpenProfile = (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -153,17 +160,31 @@ export default function Frame({ children }) {
     setOpen(false);
   };
 
+  // Fungsi untuk mengelola buka/tutup collapse menu item
+  const handleCollapseClick = (label) => {
+    setOpenCollapse((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
+  // Definisi item menu utama untuk sidebar
   const mainMenuItems = [
     { to: "/", icon: <HomeIcon />, label: "Home", exact: true },
     { to: "/StockProduction", icon: <StorageIcon />, label: "Stock Production", badge: 2 },
-    { to: "/Produksi", icon: <ProductionQuantityLimitsIcon />, label: "Produksi" },
-    { to: "/Overhaul", icon: <BuildIcon />, label: "Overhaul Point" }, // Changed label for clarity
-    { to: "/Rekayasa", icon: <BuildIcon />, label: "Rekayasa" },
+    {
+      label: "Manufacturing", // Kategori baru untuk item bersarang
+      icon: <FactoryIcon />,
+      subItems: [
+        { to: "/Produksi", icon: <ProductionQuantityLimitsIcon />, label: "Produksi" },
+        { to: "/Overhaul", icon: <BuildIcon />, label: "Overhaul Point" },
+        { to: "/Rekayasa", icon: <BuildIcon />, label: "Rekayasa" },
+      ],
+    },
     { to: "/Kalibrasi", icon: <ScienceIcon />, label: "Kalibrasi", badge: 1 },
     { to: "/Inventory", icon: <InventoryIcon />, label: "Inventory" },
     { to: "/Personalia", icon: <PeopleIcon />, label: "Personalia" },
+   { to: "/QualityControl", icon: <BuildIcon />, label: "Quality Control" },
   ];
 
+  // Definisi item menu untuk navigasi atas
   const topNavItems = [
     { to: "/", label: "Home" },
     { to: "/StockProduction", label: "Stock" },
@@ -174,6 +195,7 @@ export default function Frame({ children }) {
   return (
     <Box sx={{ display: "flex" }}>
       <CssBaseline />
+      {/* AppBar (Header) */}
       <AppBar position="fixed" open={open}>
         <Toolbar
           sx={{
@@ -185,7 +207,7 @@ export default function Frame({ children }) {
             gap: 1,
           }}
         >
-          {/* Top row with menu button, title, and user controls */}
+          {/* Baris atas dengan tombol menu, judul, dan kontrol pengguna */}
           <Box
             sx={{
               display: "flex",
@@ -224,9 +246,9 @@ export default function Frame({ children }) {
             </Box>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              {/* Tombol untuk mengganti mode terang/gelap */}
               <Tooltip title="Toggle dark/light mode">
                 <IconButton onClick={colorMode.toggleColorMode} color="inherit">
-                  {/* Icon changes based on current theme mode */}
                   {theme.palette.mode === "dark" ? (
                     <Brightness7 />
                   ) : (
@@ -235,14 +257,16 @@ export default function Frame({ children }) {
                 </IconButton>
               </Tooltip>
 
+              {/* Ikon Notifikasi dengan Badge */}
               <Tooltip title="Notifications">
-                <IconButton color="inherit">
+                <IconButton color="inherit" aria-label={`Show ${notifications} new notifications`}>
                   <NotificationBadge badgeContent={notifications} color="error">
                     <Notifications />
                   </NotificationBadge>
                 </IconButton>
               </Tooltip>
 
+              {/* Avatar Pengguna dan Menu Profil */}
               <Tooltip title="Account settings">
                 <IconButton
                   onClick={handleOpenProfile}
@@ -257,8 +281,8 @@ export default function Frame({ children }) {
                       height: 36,
                       background:
                         theme.palette.mode === "dark"
-                          ? "linear-gradient(135deg, #1976d2, #2196f3)" // Blue gradient for avatar in dark mode (SWAPPED)
-                          : "linear-gradient(135deg, #FF8C00, #FFA500)", // Orange gradient for avatar in light mode (SWAPPED)
+                          ? "linear-gradient(135deg, #1976d2, #2196f3)" // Blue gradient for avatar in dark mode
+                          : "linear-gradient(135deg, #FF8C00, #FFA500)", // Orange gradient for avatar in light mode
                       boxShadow: theme.shadows[2],
                       color: "white",
                       fontWeight: "bold",
@@ -294,9 +318,9 @@ export default function Frame({ children }) {
               sx={{
                 display: "inline-block",
                 whiteSpace: "nowrap",
-                fontSize: "0.9rem", // Slightly increased font size
-                fontWeight: "medium", // Added font weight
-                letterSpacing: "0.2px", // Tighter letter spacing
+                fontSize: "0.9rem",
+                fontWeight: "medium",
+                letterSpacing: "0.2px",
                 color: theme.palette.mode === "dark" ? "#fff" : "#000",
                 px: 2,
                 animation: "marquee 15s linear infinite",
@@ -314,7 +338,7 @@ export default function Frame({ children }) {
             `}</style>
           </Box>
 
-          {/* Navigation links */}
+          {/* Navigation links (Top Navbar) */}
           <Box
             sx={{
               display: { xs: "none", md: "flex" },
@@ -354,6 +378,7 @@ export default function Frame({ children }) {
             ))}
           </Box>
 
+          {/* Menu Dropdown untuk Profil */}
           <Menu
             anchorEl={anchorEl}
             id="account-menu"
@@ -389,7 +414,7 @@ export default function Frame({ children }) {
             transformOrigin={{ horizontal: "right", vertical: "top" }}
             anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
           >
-            <Link to="/profile" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link to="/Profile" style={{ textDecoration: "none", color: "inherit" }}>
               <MenuItem onClick={handleCloseProfile}>
                 <Avatar /> Profile
               </MenuItem>
@@ -401,7 +426,8 @@ export default function Frame({ children }) {
               </ListItemIcon>
               Settings
             </MenuItem>
-            <MenuItem onClick={handleCloseProfile}>
+            {/* Perbaikan: Menambahkan onClick={onLogout} untuk tombol Logout */}
+            <MenuItem onClick={() => { handleCloseProfile(); onLogout(); }}>
               <ListItemIcon>
                 <Logout fontSize="small" />
               </ListItemIcon>
@@ -411,6 +437,7 @@ export default function Frame({ children }) {
         </Toolbar>
       </AppBar>
 
+      {/* Drawer (Sidebar) */}
       <Drawer
         sx={{
           width: drawerWidth,
@@ -418,15 +445,9 @@ export default function Frame({ children }) {
           "& .MuiDrawer-paper": {
             width: drawerWidth,
             boxSizing: "border-box",
-            // Drawer background adjusts to theme mode
-            background:
-              theme.palette.mode === "dark"
-                ? "linear-gradient(195deg, #f5f5f5, #e0e0e0)" // Light mode background for dark mode (SWAPPED)
-                : "linear-gradient(195deg, #1A1A1A, #121212)", // Dark mode background for light mode (SWAPPED)
-            color:
-              theme.palette.mode === "dark"
-                ? "rgba(0, 0, 0, 0.8)" // Dark text for dark mode (SWAPPED)
-                : "rgba(255, 255, 255, 0.8)", // Light text for light mode (SWAPPED)
+            // Sidebar background is now white regardless of theme mode
+            background: "#FFFFFF", // Pure white background
+            color: "rgba(0, 0, 0, 0.87)", // Dark text for readability on white background
             borderRight: "none",
             boxShadow: "2px 0 10px rgba(0, 0, 0, 0.1)",
           },
@@ -438,77 +459,55 @@ export default function Frame({ children }) {
         <DrawerHeader>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <img src={kaiLogo} alt="KAI Logo" style={{ height: 36 }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: "bold", color: "rgba(0, 0, 0, 0.87)" }}>
               Production
             </Typography>
           </Box>
-          <IconButton onClick={handleDrawerClose} sx={{ color: "inherit" }}>
+          <IconButton onClick={handleDrawerClose} sx={{ color: "rgba(0, 0, 0, 0.6)" }}>
             {theme.direction === "ltr" ? <ChevronLeftIcon /> : <ChevronRightIcon />}
           </IconButton>
         </DrawerHeader>
         <Divider
           sx={{
-            borderColor:
-              theme.palette.mode === "dark"
-                ? "rgba(255,255,255,0.1)"
-                : "rgba(0,0,0,0.1)",
+            borderColor: "rgba(0,0,0,0.1)", // Light border for divider
           }}
         />
 
+        {/* Daftar Menu Sidebar */}
         <List sx={{ pt: 1 }}>
           {mainMenuItems.map((item) => (
-            <Link
-              to={item.to}
-              key={item.to}
-              style={{ textDecoration: "none" }}
-            >
-              <ListItem disablePadding>
+            item.subItems ? (
+              <React.Fragment key={item.label}>
                 <ListItemButton
-                  selected={
-                    item.exact
-                      ? location.pathname === item.to
-                      : location.pathname.startsWith(item.to)
-                  }
+                  onClick={() => handleCollapseClick(item.label)}
                   sx={{
-                    color: "inherit",
+                    color: "rgba(0, 0, 0, 0.7)", // Default text color for main items
                     borderLeft: "4px solid transparent",
-                    "&.Mui-selected": {
-                      backgroundColor:
-                        theme.palette.mode === "dark"
-                          ? "rgba(25, 118, 210, 0.15)" // Blue tint for selected in dark mode (SWAPPED)
-                          : "rgba(255, 165, 0, 0.15)", // Orange tint for selected in light mode (SWAPPED)
-                      color:
-                        theme.palette.mode === "dark" ? "#1976d2" : "#FFA500", // Blue text for selected in dark mode (SWAPPED)
-                      borderLeft:
-                        theme.palette.mode === "dark"
-                          ? "4px solid #1976d2" // Blue border for selected in dark mode (SWAPPED)
-                          : "4px solid #FFA500", // Orange border for selected in light mode (SWAPPED)
-                      "& .MuiListItemIcon-root": {
-                        color:
-                          theme.palette.mode === "dark"
-                            ? "#1976d2" // Blue icon for selected in dark mode (SWAPPED)
-                            : "#FFA500", // Orange icon for selected in light mode (SWAPPED)
-                      },
-                    },
-                    "&:hover": {
-                      backgroundColor:
-                        theme.palette.mode === "dark"
-                          ? "rgba(255, 255, 255, 0.05)"
-                          : "rgba(0, 0, 0, 0.05)",
-                      // Hover color also adapts to theme
-                      color:
-                        theme.palette.mode === "dark" ? "#1976d2" : "#FFA500", // Blue hover for dark mode, Orange for light mode (SWAPPED)
-                      "& .MuiListItemIcon-root": {
-                        color:
-                          theme.palette.mode === "dark"
-                            ? "#1976d2" // Blue icon hover for dark mode (SWAPPED)
-                            : "#FFA500", // Orange icon hover for light mode (SWAPPED)
-                      },
-                    },
-                    transition: "all 0.2s ease-in-out",
                     py: 1.5,
                     pl: 3,
+                    "&:hover": {
+                      backgroundColor: "rgba(0, 0, 0, 0.04)", // Subtle hover effect
+                      color: theme.palette.primary.main, // Primary color on hover
+                      "& .MuiListItemIcon-root": {
+                        color: theme.palette.primary.main, // Primary color for icon on hover
+                      },
+                    },
+                    "&.Mui-selected": {
+                      backgroundColor: theme.palette.primary.light + '1A', // Light primary with transparency for selected background
+                      color: theme.palette.primary.main, // Primary color for selected text
+                      borderLeft: `4px solid ${theme.palette.primary.main}`, // Primary color border for selected item
+                      "& .MuiListItemIcon-root": {
+                        color: theme.palette.primary.main, // Primary color for selected icon
+                      },
+                    },
                   }}
+                  // Menentukan apakah item utama ini harus 'selected'
+                  // Ini akan true jika salah satu sub-itemnya cocok dengan pathname
+                  selected={item.subItems.some(subItem =>
+                    subItem.exact
+                      ? location.pathname === subItem.to
+                      : location.pathname.startsWith(subItem.to)
+                  )}
                 >
                   <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
                     {item.icon}
@@ -520,55 +519,167 @@ export default function Frame({ children }) {
                       fontSize: "0.9rem",
                     }}
                   />
-                  {item.badge && (
-                    <Box
-                      sx={{
-                        backgroundColor: "error.main",
-                        color: "white",
-                        borderRadius: "50%",
-                        width: 20,
-                        height: 20,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "0.7rem",
-                        fontWeight: "bold",
-                        mr: 2, // Added margin for spacing
-                      }}
-                    >
-                      {item.badge}
-                    </Box>
-                  )}
+                  {openCollapse[item.label] ? <ExpandLess /> : <ExpandMore />}
                 </ListItemButton>
-              </ListItem>
-            </Link>
+                <Collapse in={openCollapse[item.label]} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding>
+                    {item.subItems.map((subItem) => (
+                      <Link
+                        to={subItem.to}
+                        key={subItem.to}
+                        style={{ textDecoration: "none" }}
+                      >
+                        <ListItemButton
+                          selected={
+                            subItem.exact
+                              ? location.pathname === subItem.to
+                              : location.pathname.startsWith(subItem.to)
+                          }
+                          sx={{
+                            pl: 6, // Increased padding for sub-items
+                            color: "rgba(0, 0, 0, 0.6)", // Default text color for sub-items
+                            borderLeft: "4px solid transparent",
+                            "&.Mui-selected": {
+                              backgroundColor: theme.palette.primary.light + '1A', // Light primary with transparency for selected background
+                              color: theme.palette.primary.main, // Primary color for selected text
+                              borderLeft: `4px solid ${theme.palette.primary.main}`, // Primary color border for selected item
+                              "& .MuiListItemIcon-root": {
+                                color: theme.palette.primary.main, // Primary color for selected icon
+                              },
+                            },
+                            "&:hover": {
+                              backgroundColor: "rgba(0, 0, 0, 0.04)", // Subtle hover effect for sub-items
+                              color: theme.palette.primary.main, // Primary color on hover
+                              "& .MuiListItemIcon-root": {
+                                color: theme.palette.primary.main, // Primary color for icon on hover
+                              },
+                            },
+                            transition: "all 0.2s ease-in-out",
+                            py: 1.5,
+                          }}
+                        >
+                          <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
+                            {subItem.icon}
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={subItem.label}
+                            primaryTypographyProps={{
+                              fontWeight: "medium",
+                              fontSize: "0.85rem", // Slightly smaller font for sub-items
+                            }}
+                          />
+                        </ListItemButton>
+                      </Link>
+                    ))}
+                  </List>
+                </Collapse>
+              </React.Fragment>
+            ) : (
+              <Link
+                to={item.to}
+                key={item.to}
+                style={{ textDecoration: "none" }}
+              >
+                <ListItem disablePadding>
+                  <ListItemButton
+                    selected={
+                      item.exact
+                        ? location.pathname === item.to
+                        : location.pathname.startsWith(item.to)
+                    }
+                    sx={{
+                      color: "rgba(0, 0, 0, 0.7)", // Default text color for main items
+                      borderLeft: "4px solid transparent",
+                      "&.Mui-selected": {
+                        backgroundColor: theme.palette.primary.light + '1A',
+                        color: theme.palette.primary.main,
+                        borderLeft: `4px solid ${theme.palette.primary.main}`,
+                        "& .MuiListItemIcon-root": {
+                          color: theme.palette.primary.main,
+                        },
+                      },
+                      "&:hover": {
+                        backgroundColor: "rgba(0, 0, 0, 0.04)",
+                        color: theme.palette.primary.main,
+                        "& .MuiListItemIcon-root": {
+                          color: theme.palette.primary.main,
+                        },
+                      },
+                      transition: "all 0.2s ease-in-out",
+                      py: 1.5,
+                      pl: 3,
+                    }}
+                  >
+                    <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.label}
+                      primaryTypographyProps={{
+                        fontWeight: "medium",
+                        fontSize: "0.9rem",
+                      }}
+                    />
+                    {item.badge && (
+                      <Box
+                        sx={{
+                          backgroundColor: "error.main",
+                          color: "white",
+                          borderRadius: "50%",
+                          width: 20,
+                          height: 20,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "0.7rem",
+                          fontWeight: "bold",
+                          mr: 2,
+                        }}
+                      >
+                        {item.badge}
+                      </Box>
+                    )}
+                  </ListItemButton>
+                </ListItem>
+              </Link>
+            )
           ))}
         </List>
       </Drawer>
 
+      {/* Main Content Area */}
       <Main open={open}>
-        <DrawerHeader />
+        <DrawerHeader /> {/* Ini untuk memberikan padding agar konten tidak tertutup AppBar */}
         <Box
           sx={{
             backgroundColor: "background.paper",
             borderRadius: 2,
-            boxShadow: 1,
+            boxShadow: 3, // Increased shadow for more depth
             p: 3,
-            minHeight: "calc(100vh - 64px - 24px)", // Adjusted height for better fit
+            minHeight: "calc(100vh - 64px - 24px - 48px)", // Adjusted height for better fit and bottom margin
+            mt: 2, // Added top margin for content box
+            mb: 2, // Added bottom margin for content box
           }}
         >
-          {children}
+          {/* INI PERBAIKAN PENTING: Menggunakan <Outlet /> untuk merender rute anak */}
+          <Outlet />
         </Box>
       </Main>
     </Box>
   );
 }
 
-// Create a wrapper component to provide the color mode context
+/**
+ * ToggleColorMode Component
+ * Ini adalah Context Provider yang menyediakan tema Material-UI dan fungsi
+ * untuk mengganti mode warna (terang/gelap) ke seluruh aplikasi.
+ *
+ * @param {React.ReactNode} children - Komponen anak yang akan menerima konteks tema.
+ */
 export function ToggleColorMode({ children }) {
-  const [mode, setMode] = React.useState("light"); // Default to light mode
+  const [mode, setMode] = React.useState("light"); // Default ke light mode
 
-  // Memoize the color mode object to prevent unnecessary re-renders
+  // Memoize objek colorMode untuk mencegah re-render yang tidak perlu
   const colorMode = React.useMemo(
     () => ({
       toggleColorMode: () => {
@@ -578,52 +689,71 @@ export function ToggleColorMode({ children }) {
     [],
   );
 
-  // Memoize the theme creation to prevent unnecessary re-renders
+  // Memoize pembuatan tema untuk mencegah re-render yang tidak perlu
   const theme = React.useMemo(
     () =>
       createTheme({
         palette: {
-          mode, // Set palette mode dynamically
+          mode, // Set mode palet secara dinamis
           ...(mode === "light"
             ? {
-                // Light mode palette (now with orange primary, blue was primary)
+                // Palet mode terang (Primary Orange)
                 primary: {
-                  main: "#FFA500", // Orange primary for light mode (SWAPPED)
+                  main: "#FFA500", // Orange primary untuk light mode
+                  contrastText: "#fff", // Memastikan teks di atas primary berwarna putih
                 },
                 secondary: {
-                  main: "#ff9800", // Adjusted secondary for orange
+                  main: "#ff9800", // Secondary disesuaikan untuk orange
                 },
                 background: {
-                  default: '#f0f2f5', // Lighter background for light mode
+                  default: '#f0f2f5', // Background lebih terang untuk light mode
                   paper: '#ffffff',
                 },
+                text: {
+                  primary: 'rgba(0, 0, 0, 0.87)',
+                  secondary: 'rgba(0, 0, 0, 0.6)',
+                }
               }
             : {
-                // Dark mode palette (now with blue primary, orange was primary)
+                // Palet mode gelap (Primary Blue)
                 primary: {
-                  main: "#1976d2", // Blue primary for dark mode (SWAPPED)
+                  main: "#1976d2", // Blue primary untuk dark mode
+                  contrastText: "#fff", // Memastikan teks di atas primary berwarna putih
                 },
                 secondary: {
-                  main: "#2196f3", // Adjusted secondary for blue
+                  main: "#2196f3", // Secondary disesuaikan untuk blue
                 },
                 background: {
-                  default: "#121212", // Dark background
-                  paper: "#1E1E1E", // Darker paper background
+                  default: "#121212", // Background gelap
+                  paper: "#1E1E1E", // Background paper lebih gelap
                 },
+                text: {
+                  primary: 'rgba(255, 255, 255, 0.87)',
+                  secondary: 'rgba(255, 255, 255, 0.6)',
+                }
               }),
         },
-        // You can add other theme properties here like typography, shadows, etc.
+        // Anda bisa menambahkan properti tema lainnya di sini seperti typography, shadows, dll.
         components: {
           MuiCssBaseline: {
             styleOverrides: {
               body: {
-                transition: 'background-color 0.3s ease', // Smooth transition for background
+                transition: 'background-color 0.3s ease', // Transisi halus untuk background
+              },
+            },
+          },
+          MuiListItemButton: {
+            styleOverrides: {
+              root: {
+                "&.Mui-selected": {
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)', // Subtle shadow on selected item
+                },
               },
             },
           },
         },
       }),
-    [mode], // Recreate theme only when mode changes
+    [mode], // Tema akan dibuat ulang hanya jika mode berubah
   );
 
   return (

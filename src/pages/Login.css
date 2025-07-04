@@ -1,0 +1,105 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e7f0fd, #fdfcfa);
+  padding: 1.5rem;
+}
+
+.login-box {
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2.5rem;
+  border-radius: 16px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  text-align: center;
+  animation: fadeIn 0.6s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.login-logo {
+  width: 90px;
+  margin-bottom: 1rem;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.1));
+}
+
+.login-title {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 1.5rem;
+}
+
+.login-error {
+  background-color: #ffe4e4;
+  color: #c0392b;
+  padding: 0.85rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  border-left: 4px solid #e74c3c;
+}
+
+.login-input-group {
+  margin-bottom: 1.2rem;
+  text-align: left;
+}
+
+.login-input {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #dce1e7;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.login-button {
+  width: 100%;
+  padding: 0.8rem;
+  background: linear-gradient(135deg, #fd5406, #ff8a00);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(253, 84, 6, 0.3);
+}
+
+.login-link {
+  margin-top: 1.2rem;
+  font-size: 0.9rem;
+  color: #333;
+}
+
+.login-link a {
+  color: #fd5406;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.login-footer {
+  margin-top: 2.2rem;
+  font-size: 0.75rem;
+  color: #888;
+  opacity: 0.8;
+}
