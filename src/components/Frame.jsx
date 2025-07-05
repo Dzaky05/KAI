@@ -1,58 +1,55 @@
 import React, { useState, useEffect, useContext } from 'react';
+import { styled, useTheme, createTheme, ThemeProvider } from '@mui/material/styles';
+import Box from '@mui/material/Box';
+import Drawer from '@mui/material/Drawer';
+import MuiAppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import List from '@mui/material/List';
+import CssBaseline from '@mui/material/CssBaseline';
+import Typography from '@mui/material/Typography';
+import Divider from '@mui/material/Divider';
+import IconButton from '@mui/material/IconButton';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import Collapse from '@mui/material/Collapse';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import Avatar from '@mui/material/Avatar';
+import Tooltip from '@mui/material/Tooltip';
+import Badge from '@mui/material/Badge';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import LinearProgress from '@mui/material/LinearProgress';
 
-import {
-  styled,
-  useTheme,
-  ThemeProvider,
-  createTheme,
-} from "@mui/material/styles";
-import Box from "@mui/material/Box";
-import Drawer from "@mui/material/Drawer";
-import CssBaseline from "@mui/material/CssBaseline";
-import MuiAppBar from "@mui/material/AppBar";
-import Toolbar from "@mui/material/Toolbar";
-import List from "@mui/material/List";
-import Typography from "@mui/material/Typography";
-import Divider from "@mui/material/Divider";
-import IconButton from "@mui/material/IconButton";
-import MenuIcon from "@mui/icons-material/Menu";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemIcon from "@mui/material/ListItemIcon";
-import ListItemText from "@mui/material/ListItemText";
-import HomeIcon from "@mui/icons-material/Home";
-import FactoryIcon from "@mui/icons-material/Factory";
-import ProductionQuantityLimitsIcon from "@mui/icons-material/ProductionQuantityLimits";
-import InventoryIcon from "@mui/icons-material/Inventory";
-import BuildIcon from "@mui/icons-material/Build";
-import ScienceIcon from "@mui/icons-material/Science";
-import PeopleIcon from "@mui/icons-material/People";
-import StorageIcon from "@mui/icons-material/Storage";
-import { Link, useLocation, Outlet } from "react-router-dom";
-import {
-  Avatar,
-  Collapse,
-  Menu,
-  MenuItem,
-  Tooltip,
-  Badge,
-} from "@mui/material";
-import {
-  ExpandLess,
-  ExpandMore,
-  Logout,
-  Settings,
-  Notifications,
-  Brightness4,
-  Brightness7,
-} from "@mui/icons-material";
-import kaiLogo from "../assets/logokai.png"; // Pastikan path ini benar
+// Icons
+import MenuIcon from '@mui/icons-material/Menu';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import HomeIcon from '@mui/icons-material/Home';
+import StorageIcon from '@mui/icons-material/Storage';
+import FactoryIcon from '@mui/icons-material/Factory';
+import ProductionQuantityLimitsIcon from '@mui/icons-material/ProductionQuantityLimits';
+import BuildIcon from '@mui/icons-material/Build';
+import ScienceIcon from '@mui/icons-material/Science';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import PeopleIcon from '@mui/icons-material/People';
+import Notifications from '@mui/icons-material/Notifications';
+import Brightness4 from '@mui/icons-material/Brightness4';
+import Brightness7 from '@mui/icons-material/Brightness7';
+import Settings from '@mui/icons-material/Settings';
+import Logout from '@mui/icons-material/Logout';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+
+// React Router
+import { Link, Outlet, useLocation } from 'react-router-dom';
+
+import kaiLogo from "../assets/logokai.png";
 
 const drawerWidth = 240;
 
-// Styled component untuk Main content area
 const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
   ({ theme, open }) => ({
     flexGrow: 1,
@@ -69,20 +66,15 @@ const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
       }),
       marginLeft: 0,
     }),
-    backgroundColor: theme.palette.background.default,
+    backgroundColor: '#f5f7fa',
     minHeight: "100vh",
   })
 );
 
-// Styled component untuk AppBar
 const AppBar = styled(MuiAppBar, {
   shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
-  // App Bar background: Orange for light mode, Blue for dark mode
-  background:
-    theme.palette.mode === "dark"
-      ? "linear-gradient(to right, #1976d2, #2196f3)" // Blue gradient for dark mode
-      : "linear-gradient(to right, #FF8C00, #FFA500)", // Orange gradient for light mode
+  background: "#FF6D00", // Changed to orange
   boxShadow: theme.shadows[4],
   transition: theme.transitions.create(["margin", "width"], {
     easing: theme.transitions.easing.sharp,
@@ -99,19 +91,16 @@ const AppBar = styled(MuiAppBar, {
   zIndex: theme.zIndex.drawer + 1,
 }));
 
-// Styled component untuk Drawer Header
 const DrawerHeader = styled("div")(({ theme }) => ({
   display: "flex",
   alignItems: "center",
   padding: theme.spacing(0, 1),
   ...theme.mixins.toolbar,
   justifyContent: "space-between",
-  // Drawer Header background: consistent light grey for visibility
-  background: '#F0F0F0', // A light grey to stand out slightly from the white sidebar body
-  borderBottom: `1px solid rgba(0,0,0,0.1)`, // Consistent light border
+  background: '#F0F0F0',
+  borderBottom: `1px solid rgba(0,0,0,0.1)`,
 }));
 
-// Styled component untuk Notification Badge
 const NotificationBadge = styled(Badge)(({ theme }) => ({
   "& .MuiBadge-badge": {
     right: -3,
@@ -120,32 +109,33 @@ const NotificationBadge = styled(Badge)(({ theme }) => ({
     padding: "0 4px",
     background: theme.palette.error.main,
     color: theme.palette.common.white,
-    boxShadow: theme.shadows[1], // Added subtle shadow for badge
+    boxShadow: theme.shadows[1],
   },
 }));
 
-// Create the context for color mode
+const ProgressCard = styled(Card)(({ theme }) => ({
+  minWidth: 275,
+  marginBottom: theme.spacing(2),
+  borderRadius: 12,
+  boxShadow: '0 4px 20px 0 rgba(0,0,0,0.08)',
+  transition: 'transform 0.3s ease-in-out',
+  '&:hover': {
+    transform: 'translateY(-5px)',
+  },
+}));
+
 const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 
-/**
- * Frame Component
- * Ini adalah komponen layout utama yang mencakup AppBar, Drawer (Sidebar),
- * dan area konten utama.
- *
- * @param {Function} onLogout - Fungsi callback untuk menangani logout.
- */
-export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
+export default function Frame({ onLogout }) {
   const theme = useTheme();
-  // Menggunakan useContext untuk mengakses fungsi toggleColorMode dari ColorModeContext
   const colorMode = React.useContext(ColorModeContext);
-  const [open, setOpen] = React.useState(true); // State untuk mengontrol buka/tutup drawer
-  const location = useLocation(); // Hook untuk mendapatkan informasi lokasi URL saat ini
-  const [anchorEl, setAnchorEl] = React.useState(null); // State untuk mengontrol menu profil
-  const [notifications] = React.useState(3); // State dummy untuk jumlah notifikasi
-  // State untuk mengelola status buka/tutup sub-menu di sidebar
+  const [open, setOpen] = React.useState(true);
+  const location = useLocation();
+  const [anchorEl, setAnchorEl] = React.useState(null);
+  const [notifications] = React.useState(3);
   const [openCollapse, setOpenCollapse] = React.useState({});
 
-  const profile = Boolean(anchorEl); // Mengecek apakah menu profil sedang terbuka
+  const profile = Boolean(anchorEl);
   const handleOpenProfile = (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -160,17 +150,15 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
     setOpen(false);
   };
 
-  // Fungsi untuk mengelola buka/tutup collapse menu item
   const handleCollapseClick = (label) => {
     setOpenCollapse((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
-  // Definisi item menu utama untuk sidebar
   const mainMenuItems = [
     { to: "/", icon: <HomeIcon />, label: "Home", exact: true },
     { to: "/StockProduction", icon: <StorageIcon />, label: "Stock Production", badge: 2 },
     {
-      label: "Manufacturing", // Kategori baru untuk item bersarang
+      label: "Manufacturing",
       icon: <FactoryIcon />,
       subItems: [
         { to: "/Produksi", icon: <ProductionQuantityLimitsIcon />, label: "Produksi" },
@@ -181,10 +169,9 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
     { to: "/Kalibrasi", icon: <ScienceIcon />, label: "Kalibrasi", badge: 1 },
     { to: "/Inventory", icon: <InventoryIcon />, label: "Inventory" },
     { to: "/Personalia", icon: <PeopleIcon />, label: "Personalia" },
-   { to: "/QualityControl", icon: <BuildIcon />, label: "Quality Control" },
+    { to: "/QualityControl", icon: <BuildIcon />, label: "Quality Control" },
   ];
 
-  // Definisi item menu untuk navigasi atas
   const topNavItems = [
     { to: "/", label: "Home" },
     { to: "/StockProduction", label: "Stock" },
@@ -192,10 +179,20 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
     { to: "/Inventory", label: "Inventory" },
   ];
 
+  // Sample progress data
+  const progressData = [
+    { title: "Overhaul Point Machine", progress: 65, note: "Custom" },
+    { title: "Stock Production", progress: 78, note: "Custom" },
+    { title: "RingKasan Produksi", progress: 75, note: "Total Progress: 75%", subNote: "Note: V2B progress actuals are not actual locations in data collected and cannot detect remote." },
+    { title: "Produksi Radio Lokomotif", progress: 81, note: "Custom" },
+    { title: "Personalia", progress: 92, note: "Custom" },
+    { title: "Products! Way Station", progress: 63, note: "Custom" },
+    { title: "Quality Control", progress: 81, note: "Custom" },
+  ];
+
   return (
     <Box sx={{ display: "flex" }}>
       <CssBaseline />
-      {/* AppBar (Header) */}
       <AppBar position="fixed" open={open}>
         <Toolbar
           sx={{
@@ -207,7 +204,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
             gap: 1,
           }}
         >
-          {/* Baris atas dengan tombol menu, judul, dan kontrol pengguna */}
           <Box
             sx={{
               display: "flex",
@@ -246,7 +242,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
             </Box>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              {/* Tombol untuk mengganti mode terang/gelap */}
               <Tooltip title="Toggle dark/light mode">
                 <IconButton onClick={colorMode.toggleColorMode} color="inherit">
                   {theme.palette.mode === "dark" ? (
@@ -257,7 +252,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                 </IconButton>
               </Tooltip>
 
-              {/* Ikon Notifikasi dengan Badge */}
               <Tooltip title="Notifications">
                 <IconButton color="inherit" aria-label={`Show ${notifications} new notifications`}>
                   <NotificationBadge badgeContent={notifications} color="error">
@@ -266,7 +260,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                 </IconButton>
               </Tooltip>
 
-              {/* Avatar Pengguna dan Menu Profil */}
               <Tooltip title="Account settings">
                 <IconButton
                   onClick={handleOpenProfile}
@@ -279,10 +272,7 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                     sx={{
                       width: 36,
                       height: 36,
-                      background:
-                        theme.palette.mode === "dark"
-                          ? "linear-gradient(135deg, #1976d2, #2196f3)" // Blue gradient for avatar in dark mode
-                          : "linear-gradient(135deg, #FF8C00, #FFA500)", // Orange gradient for avatar in light mode
+                      background: "linear-gradient(135deg, #FF6D00, #FF9E40)", // Orange gradient
                       boxShadow: theme.shadows[2],
                       color: "white",
                       fontWeight: "bold",
@@ -295,22 +285,15 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
             </Box>
           </Box>
 
-          {/* Running Teks / Marquee */}
           <Box
             sx={{
               width: "100%",
               overflow: "hidden",
-              background:
-                theme.palette.mode === "dark"
-                  ? "rgba(255,255,255,0.08)"
-                  : "rgba(0,0,0,0.08)",
+              background: "rgba(255,255,255,0.15)", // Lighter overlay for orange
               height: 28,
               display: "flex",
               alignItems: "center",
-              borderBottom:
-                theme.palette.mode === "dark"
-                  ? "1px solid rgba(255,255,255,0.15)"
-                  : "1px solid rgba(0,0,0,0.15)",
+              borderBottom: "1px solid rgba(255,255,255,0.2)",
             }}
           >
             <Box
@@ -321,7 +304,7 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                 fontSize: "0.9rem",
                 fontWeight: "medium",
                 letterSpacing: "0.2px",
-                color: theme.palette.mode === "dark" ? "#fff" : "#000",
+                color: "#fff",
                 px: 2,
                 animation: "marquee 15s linear infinite",
               }}
@@ -338,7 +321,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
             `}</style>
           </Box>
 
-          {/* Navigation links (Top Navbar) */}
           <Box
             sx={{
               display: { xs: "none", md: "flex" },
@@ -378,7 +360,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
             ))}
           </Box>
 
-          {/* Menu Dropdown untuk Profil */}
           <Menu
             anchorEl={anchorEl}
             id="account-menu"
@@ -426,7 +407,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
               </ListItemIcon>
               Settings
             </MenuItem>
-            {/* Perbaikan: Menambahkan onClick={onLogout} untuk tombol Logout */}
             <MenuItem onClick={() => { handleCloseProfile(); onLogout(); }}>
               <ListItemIcon>
                 <Logout fontSize="small" />
@@ -437,7 +417,6 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
         </Toolbar>
       </AppBar>
 
-      {/* Drawer (Sidebar) */}
       <Drawer
         sx={{
           width: drawerWidth,
@@ -445,9 +424,8 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
           "& .MuiDrawer-paper": {
             width: drawerWidth,
             boxSizing: "border-box",
-            // Sidebar background is now white regardless of theme mode
-            background: "#FFFFFF", // Pure white background
-            color: "rgba(0, 0, 0, 0.87)", // Dark text for readability on white background
+            background: "#FFFFFF",
+            color: "rgba(0, 0, 0, 0.87)",
             borderRight: "none",
             boxShadow: "2px 0 10px rgba(0, 0, 0, 0.1)",
           },
@@ -469,11 +447,10 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
         </DrawerHeader>
         <Divider
           sx={{
-            borderColor: "rgba(0,0,0,0.1)", // Light border for divider
+            borderColor: "rgba(0,0,0,0.1)",
           }}
         />
 
-        {/* Daftar Menu Sidebar */}
         <List sx={{ pt: 1 }}>
           {mainMenuItems.map((item) => (
             item.subItems ? (
@@ -481,28 +458,26 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                 <ListItemButton
                   onClick={() => handleCollapseClick(item.label)}
                   sx={{
-                    color: "rgba(0, 0, 0, 0.7)", // Default text color for main items
+                    color: "rgba(0, 0, 0, 0.7)",
                     borderLeft: "4px solid transparent",
                     py: 1.5,
                     pl: 3,
                     "&:hover": {
-                      backgroundColor: "rgba(0, 0, 0, 0.04)", // Subtle hover effect
-                      color: theme.palette.primary.main, // Primary color on hover
+                      backgroundColor: "rgba(0, 0, 0, 0.04)",
+                      color: theme.palette.primary.main,
                       "& .MuiListItemIcon-root": {
-                        color: theme.palette.primary.main, // Primary color for icon on hover
+                        color: theme.palette.primary.main,
                       },
                     },
                     "&.Mui-selected": {
-                      backgroundColor: theme.palette.primary.light + '1A', // Light primary with transparency for selected background
-                      color: theme.palette.primary.main, // Primary color for selected text
-                      borderLeft: `4px solid ${theme.palette.primary.main}`, // Primary color border for selected item
+                      backgroundColor: theme.palette.primary.light + '1A',
+                      color: theme.palette.primary.main,
+                      borderLeft: `4px solid ${theme.palette.primary.main}`,
                       "& .MuiListItemIcon-root": {
-                        color: theme.palette.primary.main, // Primary color for selected icon
+                        color: theme.palette.primary.main,
                       },
                     },
                   }}
-                  // Menentukan apakah item utama ini harus 'selected'
-                  // Ini akan true jika salah satu sub-itemnya cocok dengan pathname
                   selected={item.subItems.some(subItem =>
                     subItem.exact
                       ? location.pathname === subItem.to
@@ -536,22 +511,22 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                               : location.pathname.startsWith(subItem.to)
                           }
                           sx={{
-                            pl: 6, // Increased padding for sub-items
-                            color: "rgba(0, 0, 0, 0.6)", // Default text color for sub-items
+                            pl: 6,
+                            color: "rgba(0, 0, 0, 0.6)",
                             borderLeft: "4px solid transparent",
                             "&.Mui-selected": {
-                              backgroundColor: theme.palette.primary.light + '1A', // Light primary with transparency for selected background
-                              color: theme.palette.primary.main, // Primary color for selected text
-                              borderLeft: `4px solid ${theme.palette.primary.main}`, // Primary color border for selected item
+                              backgroundColor: theme.palette.primary.light + '1A',
+                              color: theme.palette.primary.main,
+                              borderLeft: `4px solid ${theme.palette.primary.main}`,
                               "& .MuiListItemIcon-root": {
-                                color: theme.palette.primary.main, // Primary color for selected icon
+                                color: theme.palette.primary.main,
                               },
                             },
                             "&:hover": {
-                              backgroundColor: "rgba(0, 0, 0, 0.04)", // Subtle hover effect for sub-items
-                              color: theme.palette.primary.main, // Primary color on hover
+                              backgroundColor: "rgba(0, 0, 0, 0.04)",
+                              color: theme.palette.primary.main,
                               "& .MuiListItemIcon-root": {
-                                color: theme.palette.primary.main, // Primary color for icon on hover
+                                color: theme.palette.primary.main,
                               },
                             },
                             transition: "all 0.2s ease-in-out",
@@ -565,7 +540,7 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                             primary={subItem.label}
                             primaryTypographyProps={{
                               fontWeight: "medium",
-                              fontSize: "0.85rem", // Slightly smaller font for sub-items
+                              fontSize: "0.85rem",
                             }}
                           />
                         </ListItemButton>
@@ -588,7 +563,7 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
                         : location.pathname.startsWith(item.to)
                     }
                     sx={{
-                      color: "rgba(0, 0, 0, 0.7)", // Default text color for main items
+                      color: "rgba(0, 0, 0, 0.7)",
                       borderLeft: "4px solid transparent",
                       "&.Mui-selected": {
                         backgroundColor: theme.palette.primary.light + '1A',
@@ -647,21 +622,82 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
         </List>
       </Drawer>
 
-      {/* Main Content Area */}
       <Main open={open}>
-        <DrawerHeader /> {/* Ini untuk memberikan padding agar konten tidak tertutup AppBar */}
+        <DrawerHeader />
         <Box
           sx={{
             backgroundColor: "background.paper",
             borderRadius: 2,
-            boxShadow: 3, // Increased shadow for more depth
+            boxShadow: 3,
             p: 3,
-            minHeight: "calc(100vh - 64px - 24px - 48px)", // Adjusted height for better fit and bottom margin
-            mt: 2, // Added top margin for content box
-            mb: 2, // Added bottom margin for content box
+            minHeight: "calc(100vh - 64px - 24px - 48px)",
+            mt: 2,
+            mb: 2,
           }}
         >
-          {/* INI PERBAIKAN PENTING: Menggunakan <Outlet /> untuk merender rute anak */}
+          {/* Progress Cards Grid */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' },
+              gap: 3,
+              mb: 4
+            }}
+          >
+            {progressData.map((item, index) => (
+              <ProgressCard key={index}>
+                <CardContent>
+                  <Typography variant="h6" component="div" gutterBottom>
+                    {item.title}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Box sx={{ width: '100%', mr: 1 }}>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={item.progress} 
+                        sx={{ 
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: '#e0e0e0',
+                          '& .MuiLinearProgress-bar': {
+                            borderRadius: 5,
+                            backgroundColor: '#FF6D00' // Changed to orange
+                          }
+                        }} 
+                      />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {item.progress}%
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {item.note}
+                  </Typography>
+                  {item.subNote && (
+                    <Typography variant="caption" color="text.secondary">
+                      {item.subNote}
+                    </Typography>
+                  )}
+                </CardContent>
+              </ProgressCard>
+            ))}
+          </Box>
+
+          {/* Recent Activities Section */}
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" component="div" gutterBottom>
+                Aktivitas Terkini
+              </Typography>
+              <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                Product Terteggi: Personalis
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Notebook 90% perspecsation dengan performatoritask.
+              </Typography>
+            </CardContent>
+          </Card>
+
           <Outlet />
         </Box>
       </Main>
@@ -669,17 +705,9 @@ export default function Frame({ onLogout }) { // Menerima onLogout sebagai prop
   );
 }
 
-/**
- * ToggleColorMode Component
- * Ini adalah Context Provider yang menyediakan tema Material-UI dan fungsi
- * untuk mengganti mode warna (terang/gelap) ke seluruh aplikasi.
- *
- * @param {React.ReactNode} children - Komponen anak yang akan menerima konteks tema.
- */
 export function ToggleColorMode({ children }) {
-  const [mode, setMode] = React.useState("light"); // Default ke light mode
+  const [mode, setMode] = React.useState("light");
 
-  // Memoize objek colorMode untuk mencegah re-render yang tidak perlu
   const colorMode = React.useMemo(
     () => ({
       toggleColorMode: () => {
@@ -689,24 +717,30 @@ export function ToggleColorMode({ children }) {
     [],
   );
 
-  // Memoize pembuatan tema untuk mencegah re-render yang tidak perlu
   const theme = React.useMemo(
     () =>
       createTheme({
         palette: {
-          mode, // Set mode palet secara dinamis
+          mode,
           ...(mode === "light"
             ? {
-                // Palet mode terang (Primary Orange)
+                // Light mode palette (Primary Orange)
                 primary: {
-                  main: "#FFA500", // Orange primary untuk light mode
-                  contrastText: "#fff", // Memastikan teks di atas primary berwarna putih
+                  main: "#FF6D00", // Bright orange primary
+                  light: "#FF9E40", // Lighter orange
+                  dark: "#E65100", // Darker orange
+                  contrastText: "#fff",
                 },
                 secondary: {
-                  main: "#ff9800", // Secondary disesuaikan untuk orange
+                  main: "#FF9800", // Secondary orange
+                  light: "#FFB74D",
+                  dark: "#F57C00",
+                },
+                error: {
+                  main: "#EF5350",
                 },
                 background: {
-                  default: '#f0f2f5', // Background lebih terang untuk light mode
+                  default: '#f5f7fa',
                   paper: '#ffffff',
                 },
                 text: {
@@ -715,17 +749,24 @@ export function ToggleColorMode({ children }) {
                 }
               }
             : {
-                // Palet mode gelap (Primary Blue)
+                // Dark mode palette (keep orange but darker)
                 primary: {
-                  main: "#1976d2", // Blue primary untuk dark mode
-                  contrastText: "#fff", // Memastikan teks di atas primary berwarna putih
+                  main: "#FF6D00", // Orange primary for dark mode
+                  light: "#FF9E40",
+                  dark: "#E65100",
+                  contrastText: "#fff",
                 },
                 secondary: {
-                  main: "#2196f3", // Secondary disesuaikan untuk blue
+                  main: "#FF9800", // Secondary orange
+                  light: "#FFB74D",
+                  dark: "#F57C00",
+                },
+                error: {
+                  main: "#EF5350",
                 },
                 background: {
-                  default: "#121212", // Background gelap
-                  paper: "#1E1E1E", // Background paper lebih gelap
+                  default: "#121212",
+                  paper: "#1E1E1E",
                 },
                 text: {
                   primary: 'rgba(255, 255, 255, 0.87)',
@@ -733,12 +774,33 @@ export function ToggleColorMode({ children }) {
                 }
               }),
         },
-        // Anda bisa menambahkan properti tema lainnya di sini seperti typography, shadows, dll.
+        typography: {
+          fontFamily: [
+            'Roboto',
+            '"Helvetica Neue"',
+            'Arial',
+            'sans-serif',
+            '"Apple Color Emoji"',
+            '"Segoe UI Emoji"',
+            '"Segoe UI Symbol"',
+          ].join(','),
+          h6: {
+            fontSize: '1.15rem',
+            '@media (min-width:600px)': {
+              fontSize: '1.4rem',
+            },
+            fontWeight: 700,
+          },
+          subtitle1: {
+            fontSize: '1rem',
+            fontWeight: 600,
+          },
+        },
         components: {
           MuiCssBaseline: {
             styleOverrides: {
               body: {
-                transition: 'background-color 0.3s ease', // Transisi halus untuk background
+                transition: 'background-color 0.3s ease',
               },
             },
           },
@@ -746,14 +808,22 @@ export function ToggleColorMode({ children }) {
             styleOverrides: {
               root: {
                 "&.Mui-selected": {
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)', // Subtle shadow on selected item
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
                 },
               },
             },
           },
+          MuiToolbar: {
+            styleOverrides: {
+              root: {
+                minHeight: 'auto',
+                padding: '0 !important',
+              }
+            }
+          }
         },
       }),
-    [mode], // Tema akan dibuat ulang hanya jika mode berubah
+    [mode],
   );
 
   return (
