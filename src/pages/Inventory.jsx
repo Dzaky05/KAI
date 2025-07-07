@@ -4,7 +4,7 @@ import {
   Button, IconButton, InputLabel, MenuItem, FormControl,
   Select, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Tooltip, Drawer, Divider,
-  Snackbar, Alert, Chip
+  Snackbar, Alert, Chip, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle // Import Dialog components
 } from '@mui/material';
 import {
   Add, Delete, Edit, Download, Close
@@ -26,6 +26,8 @@ export default function Inventory() {
   const [editMode, setEditMode] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [newItem, setNewItem] = useState({ name: '', quantity: '', location: '', status: '' });
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false); // New state for confirmation dialog
+  const [itemToDeleteId, setItemToDeleteId] = useState(null); // New state to store id of item to delete
 
   const generateCode = (location, id) => {
     const loc = location?.split(' ')[1]?.toUpperCase() || 'XX';
@@ -60,11 +62,22 @@ export default function Inventory() {
     setOpenDrawer(true);
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Yakin ingin menghapus item ini?')) {
-      setInventoryData(prev => prev.filter(item => item.id !== id));
-      setSnackbar({ open: true, message: 'Item dihapus', severity: 'info' });
-    }
+  // Modified handleDelete to open confirmation dialog
+  const handleDeleteClick = (id) => {
+    setItemToDeleteId(id);
+    setOpenConfirmDialog(true);
+  };
+
+  const handleConfirmDelete = () => {
+    setInventoryData(prev => prev.filter(item => item.id !== itemToDeleteId));
+    setSnackbar({ open: true, message: 'Item dihapus', severity: 'info' });
+    setOpenConfirmDialog(false);
+    setItemToDeleteId(null);
+  };
+
+  const handleCloseConfirmDialog = () => {
+    setOpenConfirmDialog(false);
+    setItemToDeleteId(null);
   };
 
   const exportExcel = () => {
@@ -188,7 +201,7 @@ export default function Inventory() {
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip title="Edit"><IconButton onClick={() => handleEdit(row)}><Edit color="primary" /></IconButton></Tooltip>
-                    <Tooltip title="Hapus"><IconButton onClick={() => handleDelete(row.id)}><Delete color="error" /></IconButton></Tooltip>
+                    <Tooltip title="Hapus"><IconButton onClick={() => handleDeleteClick(row.id)}><Delete color="error" /></IconButton></Tooltip>
                   </TableCell>
                 </TableRow>
               ))
@@ -266,6 +279,27 @@ export default function Inventory() {
           </Grid>
         </Box>
       </Drawer>
+
+      {/* Confirmation Dialog for Deletion */}
+      <Dialog
+        open={openConfirmDialog}
+        onClose={handleCloseConfirmDialog}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">{"Konfirmasi Hapus Item"}</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            Anda yakin ingin menghapus item ini dari inventory? Tindakan ini tidak dapat dibatalkan.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConfirmDialog}>Batal</Button>
+          <Button onClick={handleConfirmDelete} autoFocus color="error">
+            Hapus
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ✅ Snackbar Notifikasi */}
       <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })}>

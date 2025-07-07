@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { styled, useTheme, createTheme, ThemeProvider } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
@@ -74,7 +74,7 @@ const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
 const AppBar = styled(MuiAppBar, {
   shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
-  background: "#FF6D00", // Changed to orange
+  background: "#FF6D00",
   boxShadow: theme.shadows[4],
   transition: theme.transitions.create(["margin", "width"], {
     easing: theme.transitions.easing.sharp,
@@ -128,12 +128,12 @@ const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 
 export default function Frame({ onLogout }) {
   const theme = useTheme();
-  const colorMode = React.useContext(ColorModeContext);
-  const [open, setOpen] = React.useState(true);
+  const colorMode = useContext(ColorModeContext);
+  const [open, setOpen] = useState(true);
   const location = useLocation();
-  const [anchorEl, setAnchorEl] = React.useState(null);
-  const [notifications] = React.useState(3);
-  const [openCollapse, setOpenCollapse] = React.useState({});
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [notifications] = useState(3);
+  const [openCollapse, setOpenCollapse] = useState({});
 
   const profile = Boolean(anchorEl);
   const handleOpenProfile = (event) => {
@@ -179,7 +179,6 @@ export default function Frame({ onLogout }) {
     { to: "/Inventory", label: "Inventory" },
   ];
 
-  // Sample progress data
   const progressData = [
     { title: "Overhaul Point Machine", progress: 65, note: "Custom" },
     { title: "Stock Production", progress: 78, note: "Custom" },
@@ -272,7 +271,7 @@ export default function Frame({ onLogout }) {
                     sx={{
                       width: 36,
                       height: 36,
-                      background: "linear-gradient(135deg, #FF6D00, #FF9E40)", // Orange gradient
+                      background: "linear-gradient(135deg, #FF6D00, #FF9E40)",
                       boxShadow: theme.shadows[2],
                       color: "white",
                       fontWeight: "bold",
@@ -289,7 +288,7 @@ export default function Frame({ onLogout }) {
             sx={{
               width: "100%",
               overflow: "hidden",
-              background: "rgba(255,255,255,0.15)", // Lighter overlay for orange
+              background: "rgba(255,255,255,0.15)",
               height: 28,
               display: "flex",
               alignItems: "center",
@@ -635,7 +634,6 @@ export default function Frame({ onLogout }) {
             mb: 2,
           }}
         >
-          {/* Progress Cards Grid */}
           <Box
             sx={{
               display: 'grid',
@@ -661,7 +659,7 @@ export default function Frame({ onLogout }) {
                           backgroundColor: '#e0e0e0',
                           '& .MuiLinearProgress-bar': {
                             borderRadius: 5,
-                            backgroundColor: '#FF6D00' // Changed to orange
+                            backgroundColor: '#FF6D00'
                           }
                         }} 
                       />
@@ -683,7 +681,6 @@ export default function Frame({ onLogout }) {
             ))}
           </Box>
 
-          {/* Recent Activities Section */}
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" component="div" gutterBottom>
@@ -706,9 +703,9 @@ export default function Frame({ onLogout }) {
 }
 
 export function ToggleColorMode({ children }) {
-  const [mode, setMode] = React.useState("light");
+  const [mode, setMode] = useState("light");
 
-  const colorMode = React.useMemo(
+  const colorMode = useMemo(
     () => ({
       toggleColorMode: () => {
         setMode((prevMode) => (prevMode === "light" ? "dark" : "light"));
@@ -717,22 +714,21 @@ export function ToggleColorMode({ children }) {
     [],
   );
 
-  const theme = React.useMemo(
+  const theme = useMemo(
     () =>
       createTheme({
         palette: {
           mode,
           ...(mode === "light"
             ? {
-                // Light mode palette (Primary Orange)
                 primary: {
-                  main: "#FF6D00", // Bright orange primary
-                  light: "#FF9E40", // Lighter orange
-                  dark: "#E65100", // Darker orange
+                  main: "#FF6D00",
+                  light: "#FF9E40",
+                  dark: "#E65100",
                   contrastText: "#fff",
                 },
                 secondary: {
-                  main: "#FF9800", // Secondary orange
+                  main: "#FF9800",
                   light: "#FFB74D",
                   dark: "#F57C00",
                 },
@@ -749,15 +745,14 @@ export function ToggleColorMode({ children }) {
                 }
               }
             : {
-                // Dark mode palette (keep orange but darker)
                 primary: {
-                  main: "#FF6D00", // Orange primary for dark mode
+                  main: "#FF6D00",
                   light: "#FF9E40",
                   dark: "#E65100",
                   contrastText: "#fff",
                 },
                 secondary: {
-                  main: "#FF9800", // Secondary orange
+                  main: "#FF9800",
                   light: "#FFB74D",
                   dark: "#F57C00",
                 },

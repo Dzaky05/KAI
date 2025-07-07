@@ -27,10 +27,9 @@ const routes = createBrowserRouter(
       {/* Public Route */}
       <Route path="/login" element={<Login />} />
 
-      {/*  Protected Routes with Layout */}
+      {/* Protected Routes with Layout */}
       <Route element={<ProtectedRoute />}>
         <Route element={<Frame />}>
-          {/* Default landing page after login */}
           <Route index element={<Dashboard />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profile" element={<Profile />} />
@@ -45,10 +44,10 @@ const routes = createBrowserRouter(
         </Route>
       </Route>
 
-      {/*  Optional Unauthorized Fallback */}
+      {/* Optional Unauthorized Fallback */}
       <Route path="/unauthorized" element={<div>Unauthorized Access</div>} />
 
-      {/*  404 Fallback */}
+      {/* 404 Fallback */}
       <Route path="*" element={<PageNotFound />} />
     </>
   )
