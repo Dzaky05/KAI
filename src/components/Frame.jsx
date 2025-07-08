@@ -19,9 +19,9 @@ import MenuItem from '@mui/material/MenuItem';
 import Avatar from '@mui/material/Avatar';
 import Tooltip from '@mui/material/Tooltip';
 import Badge from '@mui/material/Badge';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import LinearProgress from '@mui/material/LinearProgress';
+import Fab from '@mui/material/Fab';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import Skeleton from '@mui/material/Skeleton';
 
 // Icons
 import MenuIcon from '@mui/icons-material/Menu';
@@ -42,21 +42,22 @@ import Settings from '@mui/icons-material/Settings';
 import Logout from '@mui/icons-material/Logout';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
+import HelpOutline from '@mui/icons-material/HelpOutline';
 
 // React Router
 import { Link, Outlet, useLocation } from 'react-router-dom';
 
 import kaiLogo from "../assets/logokai.png";
 
-const drawerWidth = 240;
+const drawerWidth = 260;
 
 const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
   ({ theme, open }) => ({
     flexGrow: 1,
     padding: theme.spacing(3),
     transition: theme.transitions.create("margin", {
-      easing: theme.transitions.easing.sharp,
-      duration: theme.transitions.duration.leavingScreen,
+      easing: theme.transitions.easing.easeInOut,
+      duration: theme.transitions.duration.standard,
     }),
     marginLeft: `-${drawerWidth}px`,
     ...(open && {
@@ -66,7 +67,7 @@ const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
       }),
       marginLeft: 0,
     }),
-    backgroundColor: '#f5f7fa',
+    backgroundColor: theme.palette.mode === 'light' ? '#f5f7fa' : '#121212',
     minHeight: "100vh",
   })
 );
@@ -74,11 +75,11 @@ const Main = styled("main", { shouldForwardProp: (prop) => prop !== "open" })(
 const AppBar = styled(MuiAppBar, {
   shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
-  background: "#FF6D00",
+  background: "linear-gradient(135deg, #FF6D00 0%, #E65100 100%)",
   boxShadow: theme.shadows[4],
   transition: theme.transitions.create(["margin", "width"], {
-    easing: theme.transitions.easing.sharp,
-    duration: theme.transitions.duration.leavingScreen,
+    easing: theme.transitions.easing.easeInOut,
+    duration: theme.transitions.duration.standard,
   }),
   ...(open && {
     width: `calc(100% - ${drawerWidth}px)`,
@@ -94,11 +95,11 @@ const AppBar = styled(MuiAppBar, {
 const DrawerHeader = styled("div")(({ theme }) => ({
   display: "flex",
   alignItems: "center",
-  padding: theme.spacing(0, 1),
+  padding: theme.spacing(0, 2),
   ...theme.mixins.toolbar,
   justifyContent: "space-between",
-  background: '#F0F0F0',
-  borderBottom: `1px solid rgba(0,0,0,0.1)`,
+  background: theme.palette.mode === 'light' ? '#F0F0F0' : '#1E1E1E',
+  borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
 const NotificationBadge = styled(Badge)(({ theme }) => ({
@@ -110,30 +111,31 @@ const NotificationBadge = styled(Badge)(({ theme }) => ({
     background: theme.palette.error.main,
     color: theme.palette.common.white,
     boxShadow: theme.shadows[1],
-  },
-}));
-
-const ProgressCard = styled(Card)(({ theme }) => ({
-  minWidth: 275,
-  marginBottom: theme.spacing(2),
-  borderRadius: 12,
-  boxShadow: '0 4px 20px 0 rgba(0,0,0,0.08)',
-  transition: 'transform 0.3s ease-in-out',
-  '&:hover': {
-    transform: 'translateY(-5px)',
+    animation: 'pulse 2s infinite',
   },
 }));
 
 const ColorModeContext = React.createContext({ toggleColorMode: () => {} });
 
-export default function Frame({ onLogout }) {
+export default function Frame({ children, onLogout }) {
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
-  const [open, setOpen] = useState(true);
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [open, setOpen] = useState(!isMobile);
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState(null);
   const [notifications] = useState(3);
   const [openCollapse, setOpenCollapse] = useState({});
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isMobile) {
+      setOpen(false);
+    } else {
+      setOpen(true);
+    }
+  }, [isMobile]);
 
   const profile = Boolean(anchorEl);
   const handleOpenProfile = (event) => {
@@ -179,16 +181,6 @@ export default function Frame({ onLogout }) {
     { to: "/Inventory", label: "Inventory" },
   ];
 
-  const progressData = [
-    { title: "Overhaul Point Machine", progress: 65, note: "Custom" },
-    { title: "Stock Production", progress: 78, note: "Custom" },
-    { title: "RingKasan Produksi", progress: 75, note: "Total Progress: 75%", subNote: "Note: V2B progress actuals are not actual locations in data collected and cannot detect remote." },
-    { title: "Produksi Radio Lokomotif", progress: 81, note: "Custom" },
-    { title: "Personalia", progress: 92, note: "Custom" },
-    { title: "Products! Way Station", progress: 63, note: "Custom" },
-    { title: "Quality Control", progress: 81, note: "Custom" },
-  ];
-
   return (
     <Box sx={{ display: "flex" }}>
       <CssBaseline />
@@ -220,7 +212,14 @@ export default function Frame({ onLogout }) {
                 aria-label="open drawer"
                 onClick={handleDrawerOpen}
                 edge="start"
-                sx={{ mr: 1, ...(open && { display: "none" }) }}
+                sx={{ 
+                  mr: 1, 
+                  ...(open && { display: "none" }),
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                  },
+                  transition: 'transform 0.3s'
+                }}
               >
                 <MenuIcon />
               </IconButton>
@@ -234,6 +233,7 @@ export default function Frame({ onLogout }) {
                   textTransform: "uppercase",
                   letterSpacing: "1px",
                   fontSize: { xs: "1rem", sm: "1.25rem" },
+                  textShadow: '1px 1px 2px rgba(0,0,0,0.2)',
                 }}
               >
                 PT KERETA API BALAI YASA & LAA
@@ -241,8 +241,30 @@ export default function Frame({ onLogout }) {
             </Box>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Tooltip title="Toggle dark/light mode">
-                <IconButton onClick={colorMode.toggleColorMode} color="inherit">
+              <Tooltip 
+                title="Toggle dark/light mode" 
+                componentsProps={{
+                  tooltip: {
+                    sx: {
+                      bgcolor: theme.palette.mode === 'dark' ? '#FF6D00' : '#E65100',
+                      color: 'white',
+                      fontSize: '0.8rem',
+                      boxShadow: theme.shadows[4],
+                    }
+                  }
+                }}
+              >
+                <IconButton 
+                  onClick={colorMode.toggleColorMode} 
+                  color="inherit"
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.2)',
+                      transform: 'rotate(180deg)',
+                    },
+                    transition: 'transform 0.5s'
+                  }}
+                >
                   {theme.palette.mode === "dark" ? (
                     <Brightness7 />
                   ) : (
@@ -252,7 +274,15 @@ export default function Frame({ onLogout }) {
               </Tooltip>
 
               <Tooltip title="Notifications">
-                <IconButton color="inherit" aria-label={`Show ${notifications} new notifications`}>
+                <IconButton 
+                  color="inherit" 
+                  aria-label={`Show ${notifications} new notifications`}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.2)',
+                    }
+                  }}
+                >
                   <NotificationBadge badgeContent={notifications} color="error">
                     <Notifications />
                   </NotificationBadge>
@@ -266,6 +296,11 @@ export default function Frame({ onLogout }) {
                   aria-controls={profile ? "account-menu" : undefined}
                   aria-haspopup="true"
                   aria-expanded={profile ? "true" : undefined}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(255,255,255,0.2)',
+                    }
+                  }}
                 >
                   <Avatar
                     sx={{
@@ -275,6 +310,11 @@ export default function Frame({ onLogout }) {
                       boxShadow: theme.shadows[2],
                       color: "white",
                       fontWeight: "bold",
+                      transition: 'transform 0.3s, box-shadow 0.3s',
+                      '&:hover': {
+                        transform: 'scale(1.1)',
+                        boxShadow: theme.shadows[4],
+                      }
                     }}
                   >
                     M
@@ -317,6 +357,11 @@ export default function Frame({ onLogout }) {
                 0% { transform: translateX(100%); }
                 100% { transform: translateX(-100%); }
               }
+              @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.2); }
+                100% { transform: scale(1); }
+              }
             `}</style>
           </Box>
 
@@ -338,10 +383,22 @@ export default function Frame({ onLogout }) {
                 transition: "all 0.3s ease",
                 "&:hover": {
                   backgroundColor: "rgba(255,255,255,0.2)",
+                  transform: 'translateY(-2px)',
                 },
                 "&.active": {
                   backgroundColor: "rgba(255,255,255,0.3)",
                   fontWeight: "600",
+                  position: 'relative',
+                  '&:after': {
+                    content: '""',
+                    position: 'absolute',
+                    bottom: 0,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: '80%',
+                    height: 2,
+                    background: theme.palette.primary.main,
+                  }
                 },
               },
             }}
@@ -358,61 +415,6 @@ export default function Frame({ onLogout }) {
               </Link>
             ))}
           </Box>
-
-          <Menu
-            anchorEl={anchorEl}
-            id="account-menu"
-            open={profile}
-            onClose={handleCloseProfile}
-            onClick={handleCloseProfile}
-            PaperProps={{
-              elevation: 3,
-              sx: {
-                overflow: "visible",
-                mt: 1.5,
-                minWidth: 200,
-                "& .MuiAvatar-root": {
-                  width: 32,
-                  height: 32,
-                  ml: -0.5,
-                  mr: 1,
-                },
-                "&:before": {
-                  content: '""',
-                  display: "block",
-                  position: "absolute",
-                  top: 0,
-                  right: 14,
-                  width: 10,
-                  height: 10,
-                  bgcolor: "background.paper",
-                  transform: "translateY(-50%) rotate(45deg)",
-                  zIndex: 0,
-                },
-              },
-            }}
-            transformOrigin={{ horizontal: "right", vertical: "top" }}
-            anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-          >
-            <Link to="/Profile" style={{ textDecoration: "none", color: "inherit" }}>
-              <MenuItem onClick={handleCloseProfile}>
-                <Avatar /> Profile
-              </MenuItem>
-            </Link>
-            <Divider />
-            <MenuItem onClick={handleCloseProfile}>
-              <ListItemIcon>
-                <Settings fontSize="small" />
-              </ListItemIcon>
-              Settings
-            </MenuItem>
-            <MenuItem onClick={() => { handleCloseProfile(); onLogout(); }}>
-              <ListItemIcon>
-                <Logout fontSize="small" />
-              </ListItemIcon>
-              Logout
-            </MenuItem>
-          </Menu>
         </Toolbar>
       </AppBar>
 
@@ -423,166 +425,86 @@ export default function Frame({ onLogout }) {
           "& .MuiDrawer-paper": {
             width: drawerWidth,
             boxSizing: "border-box",
-            background: "#FFFFFF",
-            color: "rgba(0, 0, 0, 0.87)",
+            background: theme.palette.mode === 'light' ? '#FFFFFF' : '#1E1E1E',
+            color: theme.palette.text.primary,
             borderRight: "none",
-            boxShadow: "2px 0 10px rgba(0, 0, 0, 0.1)",
+            boxShadow: theme.shadows[4],
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
           },
         }}
         variant="persistent"
         anchor="left"
         open={open}
       >
-        <DrawerHeader>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <img src={kaiLogo} alt="KAI Logo" style={{ height: 36 }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: "bold", color: "rgba(0, 0, 0, 0.87)" }}>
-              Production
-            </Typography>
-          </Box>
-          <IconButton onClick={handleDrawerClose} sx={{ color: "rgba(0, 0, 0, 0.6)" }}>
-            {theme.direction === "ltr" ? <ChevronLeftIcon /> : <ChevronRightIcon />}
-          </IconButton>
-        </DrawerHeader>
-        <Divider
-          sx={{
-            borderColor: "rgba(0,0,0,0.1)",
-          }}
-        />
+        <Box>
+          <DrawerHeader>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <img 
+                src={kaiLogo} 
+                alt="KAI Logo" 
+                style={{ 
+                  height: 36,
+                  transition: 'transform 0.5s',
+                  '&:hover': {
+                    transform: 'rotate(360deg)',
+                  }
+                }} 
+              />
+              <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+                Production
+              </Typography>
+            </Box>
+            <IconButton onClick={handleDrawerClose}>
+              {theme.direction === "ltr" ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+            </IconButton>
+          </DrawerHeader>
+          <Divider />
 
-        <List sx={{ pt: 1 }}>
-          {mainMenuItems.map((item) => (
-            item.subItems ? (
-              <React.Fragment key={item.label}>
-                <ListItemButton
-                  onClick={() => handleCollapseClick(item.label)}
-                  sx={{
-                    color: "rgba(0, 0, 0, 0.7)",
-                    borderLeft: "4px solid transparent",
-                    py: 1.5,
-                    pl: 3,
-                    "&:hover": {
-                      backgroundColor: "rgba(0, 0, 0, 0.04)",
-                      color: theme.palette.primary.main,
-                      "& .MuiListItemIcon-root": {
-                        color: theme.palette.primary.main,
-                      },
-                    },
-                    "&.Mui-selected": {
-                      backgroundColor: theme.palette.primary.light + '1A',
-                      color: theme.palette.primary.main,
-                      borderLeft: `4px solid ${theme.palette.primary.main}`,
-                      "& .MuiListItemIcon-root": {
-                        color: theme.palette.primary.main,
-                      },
-                    },
-                  }}
-                  selected={item.subItems.some(subItem =>
-                    subItem.exact
-                      ? location.pathname === subItem.to
-                      : location.pathname.startsWith(subItem.to)
-                  )}
-                >
-                  <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
-                    {item.icon}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontWeight: "medium",
-                      fontSize: "0.9rem",
-                    }}
-                  />
-                  {openCollapse[item.label] ? <ExpandLess /> : <ExpandMore />}
-                </ListItemButton>
-                <Collapse in={openCollapse[item.label]} timeout="auto" unmountOnExit>
-                  <List component="div" disablePadding>
-                    {item.subItems.map((subItem) => (
-                      <Link
-                        to={subItem.to}
-                        key={subItem.to}
-                        style={{ textDecoration: "none" }}
-                      >
-                        <ListItemButton
-                          selected={
-                            subItem.exact
-                              ? location.pathname === subItem.to
-                              : location.pathname.startsWith(subItem.to)
-                          }
-                          sx={{
-                            pl: 6,
-                            color: "rgba(0, 0, 0, 0.6)",
-                            borderLeft: "4px solid transparent",
-                            "&.Mui-selected": {
-                              backgroundColor: theme.palette.primary.light + '1A',
-                              color: theme.palette.primary.main,
-                              borderLeft: `4px solid ${theme.palette.primary.main}`,
-                              "& .MuiListItemIcon-root": {
-                                color: theme.palette.primary.main,
-                              },
-                            },
-                            "&:hover": {
-                              backgroundColor: "rgba(0, 0, 0, 0.04)",
-                              color: theme.palette.primary.main,
-                              "& .MuiListItemIcon-root": {
-                                color: theme.palette.primary.main,
-                              },
-                            },
-                            transition: "all 0.2s ease-in-out",
-                            py: 1.5,
-                          }}
-                        >
-                          <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
-                            {subItem.icon}
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={subItem.label}
-                            primaryTypographyProps={{
-                              fontWeight: "medium",
-                              fontSize: "0.85rem",
-                            }}
-                          />
-                        </ListItemButton>
-                      </Link>
-                    ))}
-                  </List>
-                </Collapse>
-              </React.Fragment>
-            ) : (
-              <Link
-                to={item.to}
-                key={item.to}
-                style={{ textDecoration: "none" }}
-              >
-                <ListItem disablePadding>
+          <List sx={{ pt: 1 }}>
+            {mainMenuItems.map((item) => (
+              item.subItems ? (
+                <React.Fragment key={item.label}>
                   <ListItemButton
-                    selected={
-                      item.exact
-                        ? location.pathname === item.to
-                        : location.pathname.startsWith(item.to)
-                    }
+                    onClick={() => handleCollapseClick(item.label)}
                     sx={{
-                      color: "rgba(0, 0, 0, 0.7)",
+                      color: theme.palette.text.secondary,
                       borderLeft: "4px solid transparent",
+                      py: 1.5,
+                      pl: 3,
+                      "&:hover": {
+                        backgroundColor: theme.palette.action.hover,
+                        color: theme.palette.primary.main,
+                        "& .MuiListItemIcon-root": {
+                          color: theme.palette.primary.main,
+                        },
+                        transform: 'translateX(4px)',
+                      },
                       "&.Mui-selected": {
-                        backgroundColor: theme.palette.primary.light + '1A',
+                        backgroundColor: `${theme.palette.primary.main}20`,
                         color: theme.palette.primary.main,
                         borderLeft: `4px solid ${theme.palette.primary.main}`,
                         "& .MuiListItemIcon-root": {
                           color: theme.palette.primary.main,
                         },
-                      },
-                      "&:hover": {
-                        backgroundColor: "rgba(0, 0, 0, 0.04)",
-                        color: theme.palette.primary.main,
-                        "& .MuiListItemIcon-root": {
-                          color: theme.palette.primary.main,
+                        '&:before': {
+                          content: '""',
+                          position: 'absolute',
+                          right: 0,
+                          top: 0,
+                          height: '100%',
+                          width: 4,
+                          background: theme.palette.primary.main,
                         },
                       },
-                      transition: "all 0.2s ease-in-out",
-                      py: 1.5,
-                      pl: 3,
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
+                    selected={item.subItems.some(subItem =>
+                      subItem.exact
+                        ? location.pathname === subItem.to
+                        : location.pathname.startsWith(subItem.to)
+                    )}
                   >
                     <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
                       {item.icon}
@@ -594,110 +516,309 @@ export default function Frame({ onLogout }) {
                         fontSize: "0.9rem",
                       }}
                     />
-                    {item.badge && (
-                      <Box
-                        sx={{
-                          backgroundColor: "error.main",
-                          color: "white",
-                          borderRadius: "50%",
-                          width: 20,
-                          height: 20,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "0.7rem",
-                          fontWeight: "bold",
-                          mr: 2,
-                        }}
-                      >
-                        {item.badge}
-                      </Box>
-                    )}
+                    {openCollapse[item.label] ? <ExpandLess /> : <ExpandMore />}
                   </ListItemButton>
-                </ListItem>
-              </Link>
-            )
-          ))}
-        </List>
+                  <Collapse in={openCollapse[item.label]} timeout="auto" unmountOnExit>
+                    <List component="div" disablePadding>
+                      {item.subItems.map((subItem) => (
+                        <Link
+                          to={subItem.to}
+                          key={subItem.to}
+                          style={{ textDecoration: "none" }}
+                        >
+                          <ListItemButton
+                            selected={
+                              subItem.exact
+                                ? location.pathname === subItem.to
+                                : location.pathname.startsWith(subItem.to)
+                            }
+                            sx={{
+                              pl: 6,
+                              color: theme.palette.text.secondary,
+                              borderLeft: "4px solid transparent",
+                              "&.Mui-selected": {
+                                backgroundColor: `${theme.palette.primary.main}20`,
+                                color: theme.palette.primary.main,
+                                borderLeft: `4px solid ${theme.palette.primary.main}`,
+                                "& .MuiListItemIcon-root": {
+                                  color: theme.palette.primary.main,
+                                },
+                              },
+                              "&:hover": {
+                                backgroundColor: theme.palette.action.hover,
+                                color: theme.palette.primary.main,
+                                "& .MuiListItemIcon-root": {
+                                  color: theme.palette.primary.main,
+                                },
+                                transform: 'translateX(4px)',
+                              },
+                              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                              py: 1.5,
+                            }}
+                          >
+                            <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
+                              {subItem.icon}
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={subItem.label}
+                              primaryTypographyProps={{
+                                fontWeight: "medium",
+                                fontSize: "0.85rem",
+                              }}
+                            />
+                          </ListItemButton>
+                        </Link>
+                      ))}
+                    </List>
+                  </Collapse>
+                </React.Fragment>
+              ) : (
+                <Link
+                  to={item.to}
+                  key={item.to}
+                  style={{ textDecoration: "none" }}
+                >
+                  <ListItem disablePadding>
+                    <ListItemButton
+                      selected={
+                        item.exact
+                          ? location.pathname === item.to
+                          : location.pathname.startsWith(item.to)
+                      }
+                      sx={{
+                        color: theme.palette.text.secondary,
+                        borderLeft: "4px solid transparent",
+                        "&.Mui-selected": {
+                          backgroundColor: `${theme.palette.primary.main}20`,
+                          color: theme.palette.primary.main,
+                          borderLeft: `4px solid ${theme.palette.primary.main}`,
+                          "& .MuiListItemIcon-root": {
+                            color: theme.palette.primary.main,
+                          },
+                          '&:before': {
+                            content: '""',
+                            position: 'absolute',
+                            right: 0,
+                            top: 0,
+                            height: '100%',
+                            width: 4,
+                            background: theme.palette.primary.main,
+                          },
+                        },
+                        "&:hover": {
+                          backgroundColor: theme.palette.action.hover,
+                          color: theme.palette.primary.main,
+                          "& .MuiListItemIcon-root": {
+                            color: theme.palette.primary.main,
+                          },
+                          transform: 'translateX(4px)',
+                        },
+                        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                        py: 1.5,
+                        pl: 3,
+                      }}
+                    >
+                      <ListItemIcon sx={{ color: "inherit", minWidth: "40px" }}>
+                        {item.icon}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={item.label}
+                        primaryTypographyProps={{
+                          fontWeight: "medium",
+                          fontSize: "0.9rem",
+                        }}
+                      />
+                      {item.badge && (
+                        <Box
+                          sx={{
+                            backgroundColor: "error.main",
+                            color: "white",
+                            borderRadius: "50%",
+                            width: 20,
+                            height: 20,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "0.7rem",
+                            fontWeight: "bold",
+                            mr: 2,
+                          }}
+                        >
+                          {item.badge}
+                        </Box>
+                      )}
+                    </ListItemButton>
+                  </ListItem>
+                </Link>
+              )
+            ))}
+          </List>
+        </Box>
+
+        <Box sx={{ 
+          p: 2, 
+          textAlign: 'center',
+          borderTop: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.mode === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+          transition: 'all 0.3s',
+          '&:hover': {
+            backgroundColor: theme.palette.mode === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
+            cursor: 'pointer',
+          }
+        }} onClick={() => window.location.href = '/'}>
+          <Typography 
+            variant="overline" 
+            sx={{
+              fontWeight: 'bold',
+              color: theme.palette.mode === 'light' ? theme.palette.primary.main : theme.palette.primary.light,
+              letterSpacing: '1px',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1
+            }}
+          >
+            <img src={kaiLogo} alt="KAI Logo" style={{ height: 20 }} />
+            BALAI YASA & LAA
+          </Typography>
+        </Box>
       </Drawer>
 
       <Main open={open}>
         <DrawerHeader />
         <Box
           sx={{
-            backgroundColor: "background.paper",
+            backgroundColor: theme.palette.background.paper,
             borderRadius: 2,
-            boxShadow: 3,
+            boxShadow: theme.shadows[2],
             p: 3,
             minHeight: "calc(100vh - 64px - 24px - 48px)",
             mt: 2,
             mb: 2,
           }}
         >
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' },
-              gap: 3,
-              mb: 4
-            }}
-          >
-            {progressData.map((item, index) => (
-              <ProgressCard key={index}>
-                <CardContent>
-                  <Typography variant="h6" component="div" gutterBottom>
-                    {item.title}
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Box sx={{ width: '100%', mr: 1 }}>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={item.progress} 
-                        sx={{ 
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: '#e0e0e0',
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 5,
-                            backgroundColor: '#FF6D00'
-                          }
-                        }} 
-                      />
-                    </Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {item.progress}%
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {item.note}
-                  </Typography>
-                  {item.subNote && (
-                    <Typography variant="caption" color="text.secondary">
-                      {item.subNote}
-                    </Typography>
-                  )}
-                </CardContent>
-              </ProgressCard>
-            ))}
-          </Box>
-
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" component="div" gutterBottom>
-                Aktivitas Terkini
-              </Typography>
-              <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-                Product Terteggi: Personalis
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Notebook 90% perspecsation dengan performatoritask.
-              </Typography>
-            </CardContent>
-          </Card>
-
-          <Outlet />
+          {loading ? (
+            <Box sx={{ p: 2 }}>
+              <Skeleton variant="rectangular" height={40} sx={{ mb: 2 }} />
+              <Skeleton variant="rectangular" height={100} />
+            </Box>
+          ) : (
+            <>
+              {children}
+              <Outlet />
+            </>
+          )}
         </Box>
       </Main>
+
+      <Fab
+        color="primary"
+        aria-label="toggle drawer"
+        onClick={open ? handleDrawerClose : handleDrawerOpen}
+        sx={{
+          position: 'fixed',
+          left: open ? drawerWidth + 16 : 16,
+          bottom: 16,
+          zIndex: theme.zIndex.drawer + 1,
+          transition: theme.transitions.create(['left'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+        }}
+      >
+        {open ? <ChevronLeftIcon /> : <MenuIcon />}
+      </Fab>
+
+      <Fab
+        color="secondary"
+        aria-label="help"
+        sx={{
+          position: 'fixed',
+          right: 16,
+          bottom: 16,
+          zIndex: theme.zIndex.drawer + 1,
+        }}
+        onClick={() => setHelpOpen(true)}
+      >
+        <HelpOutline />
+      </Fab>
+
+      <Menu
+        anchorEl={anchorEl}
+        id="account-menu"
+        open={profile}
+        onClose={handleCloseProfile}
+        onClick={handleCloseProfile}
+        PaperProps={{
+          elevation: 3,
+          sx: {
+            overflow: "visible",
+            mt: 1.5,
+            minWidth: 200,
+            "& .MuiAvatar-root": {
+              width: 32,
+              height: 32,
+              ml: -0.5,
+              mr: 1,
+            },
+            "&:before": {
+              content: '""',
+              display: "block",
+              position: "absolute",
+              top: 0,
+              right: 14,
+              width: 10,
+              height: 10,
+              bgcolor: "background.paper",
+              transform: "translateY(-50%) rotate(45deg)",
+              zIndex: 0,
+            },
+          },
+        }}
+        transformOrigin={{ horizontal: "right", vertical: "top" }}
+        anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+      >
+        <Link to="/Profile" style={{ textDecoration: "none", color: "inherit" }}>
+          <MenuItem 
+            onClick={handleCloseProfile}
+            sx={{
+              '& .MuiTouchRipple-root': {
+                color: theme.palette.primary.main,
+              }
+            }}
+          >
+            <Avatar /> Profile
+          </MenuItem>
+        </Link>
+        <Divider />
+        <MenuItem 
+          onClick={handleCloseProfile}
+          sx={{
+            '& .MuiTouchRipple-root': {
+              color: theme.palette.primary.main,
+            }
+          }}
+        >
+          <ListItemIcon>
+            <Settings fontSize="small" />
+          </ListItemIcon>
+          Settings
+        </MenuItem>
+        <MenuItem 
+          onClick={() => { handleCloseProfile(); onLogout(); }}
+          sx={{
+            '& .MuiTouchRipple-root': {
+              color: theme.palette.error.main,
+            }
+          }}
+        >
+          <ListItemIcon>
+            <Logout fontSize="small" />
+          </ListItemIcon>
+          Logout
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }
@@ -795,7 +916,21 @@ export function ToggleColorMode({ children }) {
           MuiCssBaseline: {
             styleOverrides: {
               body: {
-                transition: 'background-color 0.3s ease',
+                transition: 'background-color 0.3s ease, color 0.3s ease',
+                scrollbarWidth: 'thin',
+                '&::-webkit-scrollbar': {
+                  width: '8px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: mode === 'light' ? '#f1f1f1' : '#2d2d2d',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: mode === 'light' ? '#888' : '#555',
+                  borderRadius: '4px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: '#FF6D00',
+                }
               },
             },
           },

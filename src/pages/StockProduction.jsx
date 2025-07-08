@@ -85,10 +85,10 @@ const StockProduction = () => {
   ];
 
   const recentActivities = [
-    { id: 1, action: "Product Terteggi: Personalis", time: "5 menit lalu", status: "completed" },
-    { id: 2, action: "Notebook 90% perspecsation", time: "12 menit lalu", status: "in-progress" },
-    { id: 3, action: "Maintenance schedule updated", time: "25 menit lalu", status: "completed" },
-    { id: 4, action: "New stock arrived", time: "1 jam lalu", status: "completed" }
+    { id: 1, action: "Product Tertinggi: Personalis", time: "5 menit lalu", status: "completed" },
+    { id: 2, action: "Notebook perspecsation", time: "12 menit lalu", status: "in-progress" },
+    { id: 3, action: "Maintenance schedule update", time: "25 menit lalu", status: "completed" },
+    { id: 4, action: "New stock", time: "1 jam lalu", status: "completed" }
   ];
 
   const handleRefresh = () => {
