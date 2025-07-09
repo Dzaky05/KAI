@@ -4,12 +4,13 @@ import {
   TableRow, TableCell, TableBody, TableContainer, Paper, TextField,
   Button, IconButton, Snackbar, Alert, Tooltip, Chip,
   Drawer, MenuItem, FormControl, InputLabel, Select, LinearProgress,
-  Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle
+  Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
+  List, ListItem, ListItemText, ListItemSecondaryAction, Divider // Added Divider for visual separation in drawer
 } from '@mui/material';
 import {
-  Add, Delete, Edit, Download, Close, InfoOutlined
+  Add, Delete, Edit, Download, Close, InfoOutlined, History as HistoryIcon // Added HistoryIcon
 } from '@mui/icons-material';
-import EngineeringIcon from '@mui/icons-material/Engineering'; // Icon baru untuk overhaul
+import EngineeringIcon from '@mui/icons-material/Engineering';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,19 +19,53 @@ import { id } from 'date-fns/locale'; // Untuk format tanggal Indonesia
 
 export default function OverhaulPoint() {
   const [data, setData] = useState([
-    { id: 1, name: 'KRD CC201-01', lokasi: 'Balai Yasa Yogyakarta', status: 'Proses', estimasi: '2025-07-20', progress: 75 },
-    { id: 2, name: 'PM 202-EX', lokasi: 'Dipo Jakarta', status: 'Selesai', estimasi: '2025-07-01', progress: 100 },
-    { id: 3, name: 'Signal 7A', lokasi: 'Bandung Selatan', status: 'Pending', estimasi: '2025-08-10', progress: 0 },
-    { id: 4, name: 'Lokomotif BB304', lokasi: 'Balai Yasa Surabaya', status: 'Proses', estimasi: '2025-07-08', progress: 40 },
-    { id: 5, name: 'Gerbong Barang', lokasi: 'Gudang Cirebon', status: 'Selesai', estimasi: '2025-06-15', progress: 100 },
+    {
+      id: 1, name: 'KRD CC201-01', lokasi: 'Balai Yasa Yogyakarta', status: 'Proses', estimasi: '2025-07-20', progress: 75,
+      history: [
+        { id: 1, timestamp: '2025-07-01T10:00:00Z', description: 'Mulai perbaikan mesin utama.' },
+        { id: 2, timestamp: '2025-07-05T14:30:00Z', description: 'Penggantian komponen rem depan.' },
+      ]
+    },
+    {
+      id: 2, name: 'PM 202-EX', lokasi: 'Dipo Jakarta', status: 'Selesai', estimasi: '2025-07-01', progress: 100,
+      history: [
+        { id: 1, timestamp: '2025-06-10T09:00:00Z', description: 'Inspeksi awal dan identifikasi masalah.' },
+        { id: 2, timestamp: '2025-06-20T11:00:00Z', description: 'Penyelesaian perbaikan kelistrikan.' },
+        { id: 3, timestamp: '2025-07-01T16:00:00Z', description: 'Uji coba dan dinyatakan selesai.' },
+      ]
+    },
+    {
+      id: 3, name: 'Signal 7A', lokasi: 'Bandung Selatan', status: 'Pending', estimasi: '2025-08-10', progress: 0,
+      history: []
+    },
+    {
+      id: 4, name: 'Lokomotif BB304', lokasi: 'Balai Yasa Surabaya', status: 'Proses', estimasi: '2025-07-08', progress: 40,
+      history: [
+        { id: 1, timestamp: '2025-07-01T09:00:00Z', description: 'Inspeksi awal dan perencanaan.' },
+      ]
+    },
+    {
+      id: 5, name: 'Gerbong Barang', lokasi: 'Gudang Cirebon', status: 'Selesai', estimasi: '2025-06-15', progress: 100,
+      history: [
+        { id: 1, timestamp: '2025-06-01T10:00:00Z', description: 'Perbaikan kerusakan minor.' },
+        { id: 2, timestamp: '2025-06-15T12:00:00Z', description: 'Pengecatan dan finalisasi.' },
+      ]
+    },
   ]);
   const [search, setSearch] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [openDrawer, setOpenDrawer] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [currentItem, setCurrentItem] = useState({ id: null, name: '', lokasi: '', status: '', estimasi: '', progress: 0 });
+  const [currentItem, setCurrentItem] = useState({ id: null, name: '', lokasi: '', status: '', estimasi: '', progress: 0, history: [] }); // Initialize history
   const [dialogOpen, setDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
+
+  // State for adding new history
+  const [newHistoryDescription, setNewHistoryDescription] = useState('');
+  // State for editing history
+  const [editHistoryDialogOpen, setEditHistoryDialogOpen] = useState(false);
+  const [currentEditingHistory, setCurrentEditingHistory] = useState(null); // The history item being edited
+
 
   const filteredData = data.filter(d =>
     d.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -43,17 +78,19 @@ export default function OverhaulPoint() {
       setEditMode(true);
       setCurrentItem({
         ...item,
-        estimasi: item.estimasi || '' // Pastikan estimasi tidak undefined untuk input date
+        estimasi: item.estimasi || '', // Pastikan estimasi tidak undefined untuk input date
+        history: item.history || [] // Ensure history array exists
       });
     } else {
       setEditMode(false);
-      setCurrentItem({ id: null, name: '', lokasi: '', status: 'Proses', estimasi: '', progress: 0 });
+      setCurrentItem({ id: null, name: '', lokasi: '', status: 'Proses', estimasi: '', progress: 0, history: [] }); // Initialize empty history for new item
     }
     setOpenDrawer(true);
   };
 
   const handleCloseDrawer = () => {
     setOpenDrawer(false);
+    setNewHistoryDescription(''); // Clear new history input
   };
 
   const handleChange = (e) => {
@@ -98,7 +135,15 @@ export default function OverhaulPoint() {
   };
 
   const exportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredData.map(({ id, ...rest }) => rest)); // Exclude ID
+    const ws = XLSX.utils.json_to_sheet(filteredData.map(item => ({
+      ID: item.id,
+      Nama: item.name,
+      Lokasi: item.lokasi,
+      Status: item.status,
+      Estimasi: format(parseISO(item.estimasi), 'dd MMMM yyyy', { locale: id }),
+      Progress: `${item.progress}%`,
+      Riwayat: item.history.map(h => `${format(parseISO(h.timestamp), 'dd/MM/yy HH:mm')} - ${h.description}`).join('; ')
+    })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Overhaul');
     XLSX.writeFile(wb, `Laporan_Overhaul_Point_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`);
@@ -114,18 +159,22 @@ export default function OverhaulPoint() {
 
     autoTable(doc, {
       startY: 30,
-      head: [['Nama', 'Lokasi', 'Status', 'Estimasi Selesai', 'Progres']],
+      head: [['Nama', 'Lokasi', 'Status', 'Estimasi Selesai', 'Progres', 'Riwayat']],
       body: filteredData.map(i => [
         i.name,
         i.lokasi,
         i.status,
         format(parseISO(i.estimasi), 'dd MMMM yyyy', { locale: id }),
-        `${i.progress}%`
+        `${i.progress}%`,
+        i.history.map(h => `${format(parseISO(h.timestamp), 'dd/MM/yy HH:mm')} - ${h.description}`).join('\n')
       ]),
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
       headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: 'bold' },
       margin: { top: 25 },
+      columnStyles: {
+        5: { cellWidth: 50 } // Adjust width for history column
+      }
     });
     doc.save(`Laporan_Overhaul_Point_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
     setSnackbar({ open: true, message: 'Data diekspor ke PDF!', severity: 'success' });
@@ -156,6 +205,73 @@ export default function OverhaulPoint() {
   const totalOverhaul = data.length;
   const inProgress = data.filter(item => item.status === 'Proses').length;
   const completed = data.filter(item => item.status === 'Selesai').length;
+
+  // --- History Management Functions ---
+  const handleAddNewHistory = () => {
+    if (newHistoryDescription.trim()) {
+      setCurrentItem((prev) => ({
+        ...prev,
+        history: [
+          ...prev.history,
+          {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            description: newHistoryDescription.trim(),
+          },
+        ],
+      }));
+      setNewHistoryDescription(''); // Clear input after adding
+      setSnackbar({ open: true, message: 'Riwayat berhasil ditambahkan!', severity: 'info' });
+    } else {
+      setSnackbar({ open: true, message: 'Deskripsi riwayat tidak boleh kosong.', severity: 'warning' });
+    }
+  };
+
+  const handleOpenEditHistoryDialog = (historyItem) => {
+    setCurrentEditingHistory(historyItem);
+    setEditHistoryDialogOpen(true);
+  };
+
+  const handleCloseEditHistoryDialog = () => {
+    setCurrentEditingHistory(null);
+    setEditHistoryDialogOpen(false);
+  };
+
+  const handleSaveEditedHistory = () => {
+    if (currentEditingHistory && currentEditingHistory.description.trim()) {
+      setCurrentItem((prev) => ({
+        ...prev,
+        history: prev.history.map((hist) =>
+          hist.id === currentEditingHistory.id
+            ? { ...currentEditingHistory, timestamp: new Date().toISOString() } // Update timestamp on edit
+            : hist
+        ),
+      }));
+      setSnackbar({ open: true, message: 'Riwayat berhasil diperbarui!', severity: 'success' });
+      handleCloseEditHistoryDialog();
+    } else {
+      setSnackbar({ open: true, message: 'Deskripsi riwayat tidak boleh kosong.', severity: 'warning' });
+    }
+  };
+
+  const handleHistoryDescriptionChange = (e) => {
+    if (currentEditingHistory) {
+      setCurrentEditingHistory((prev) => ({
+        ...prev,
+        description: e.target.value,
+      }));
+    }
+  };
+
+  const handleDeleteHistory = (historyId) => {
+    setCurrentItem((prev) => ({
+      ...prev,
+      history: prev.history.filter((hist) => hist.id !== historyId),
+    }));
+    setSnackbar({ open: true, message: 'Riwayat berhasil dihapus.', severity: 'info' });
+  };
+  // --- End History Management Functions ---
+
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 } }}>
@@ -358,6 +474,74 @@ export default function OverhaulPoint() {
                 />
               </Grid>
             )}
+
+            {/* History Section */}
+            <Grid item xs={12}>
+              <Divider sx={{ my: 3 }} /> {/* Added divider for separation */}
+              <Typography variant="h6" sx={{ mt: 3, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <HistoryIcon /> Riwayat Overhaul
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                  <TextField
+                    label="Tambahkan Riwayat Baru"
+                    variant="outlined"
+                    fullWidth
+                    value={newHistoryDescription}
+                    onChange={(e) => setNewHistoryDescription(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddNewHistory();
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleAddNewHistory}
+                    startIcon={<Add />}
+                    sx={{ flexShrink: 0, borderRadius: 2 }}
+                  >
+                    Tambah
+                  </Button>
+                </Box>
+
+                {currentItem.history.length > 0 ? (
+                  <List dense>
+                    {currentItem.history.map((hist) => (
+                      <ListItem
+                        key={hist.id}
+                        sx={{
+                          borderBottom: '1px solid #eee',
+                          '&:last-child': { borderBottom: 'none' },
+                        }}
+                      >
+                        <ListItemText
+                          primary={hist.description}
+                          secondary={format(parseISO(hist.timestamp), 'dd MMMM yyyy HH:mm', { locale: id })}
+                        />
+                        <ListItemSecondaryAction>
+                          <Tooltip title="Edit Riwayat">
+                            <IconButton edge="end" aria-label="edit" onClick={() => handleOpenEditHistoryDialog(hist)}>
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Hapus Riwayat">
+                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteHistory(hist.id)} color="error">
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                    Belum ada riwayat untuk item ini.
+                  </Typography>
+                )}
+              </Paper>
+            </Grid>
+
             <Grid item xs={12}>
               <Button
                 variant="contained"
@@ -394,6 +578,38 @@ export default function OverhaulPoint() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Dialog for Editing History Item */}
+      <Dialog
+        open={editHistoryDialogOpen}
+        onClose={handleCloseEditHistoryDialog}
+        aria-labelledby="edit-history-dialog-title"
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle id="edit-history-dialog-title">Edit Riwayat</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Deskripsi Riwayat"
+            fullWidth
+            multiline
+            rows={4}
+            value={currentEditingHistory?.description || ''}
+            onChange={handleHistoryDescriptionChange}
+            variant="outlined"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditHistoryDialog} color="primary">
+            Batal
+          </Button>
+          <Button onClick={handleSaveEditedHistory} color="primary" variant="contained">
+            Simpan Perubahan
+          </Button>
+        </DialogActions>
+      </Dialog>
+
 
       {/* Snackbar Notifikasi */}
       <Snackbar

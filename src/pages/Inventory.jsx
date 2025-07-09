@@ -4,10 +4,13 @@ import {
   Button, IconButton, InputLabel, MenuItem, FormControl,
   Select, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Tooltip, Drawer, Divider,
-  Snackbar, Alert, Chip, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle // Import Dialog components
+  Snackbar, Alert, Chip, Dialog, DialogActions, DialogContent,
+  DialogContentText, DialogTitle,
+  useTheme
 } from '@mui/material';
 import {
-  Add, Delete, Edit, Download, Close
+  Add, Delete, Edit, Download, Close,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 import InventoryIcon from '@mui/icons-material/Inventory2';
 import * as XLSX from 'xlsx';
@@ -15,170 +18,248 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export default function Inventory() {
+  const theme = useTheme();
+
   const [inventoryData, setInventoryData] = useState([
     { id: 1, name: "Rel Kereta", quantity: 150, location: "Gudang A", status: "Tersedia", itemCode: "INV-GDA-0001" },
     { id: 2, name: "Baut Khusus", quantity: 1200, location: "Gudang B", status: "Tersedia", itemCode: "INV-GDB-0002" },
     { id: 3, name: "Panel Kontrol", quantity: 25, location: "Gudang C", status: "Limit", itemCode: "INV-GDC-0003" },
+    { id: 4, name: "Kabel Serat Optik", quantity: 500, location: "Gudang A", status: "Diproduksi", itemCode: "INV-GDA-0004" },
+    { id: 5, name: "Bantalan Beton", quantity: 300, location: "Gudang D", status: "Overhaul", itemCode: "INV-GDD-0005" },
+    { id: 6, name: "Komponen Rem", quantity: 75, location: "Gudang E", status: "Rekayasa", itemCode: "INV-GDE-0006" },
+    { id: 7, name: "Sistem Persinyalan", quantity: 10, location: "Gudang F", status: "Perbaikan", itemCode: "INV-GDF-0007" },
   ]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Semua');
+  const [search, setSearch] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [openDrawer, setOpenDrawer] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [newItem, setNewItem] = useState({ name: '', quantity: '', location: '', status: '' });
-  const [openConfirmDialog, setOpenConfirmDialog] = useState(false); // New state for confirmation dialog
-  const [itemToDeleteId, setItemToDeleteId] = useState(null); // New state to store id of item to delete
+  const [currentItem, setCurrentItem] = useState({ id: null, name: '', quantity: '', location: '', status: '', itemCode: '' });
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+  const [itemToDeleteId, setItemToDeleteId] = useState(null);
+  const [itemToDeleteName, setItemToDeleteName] = useState('');
 
-  const generateCode = (location, id) => {
-    const loc = location?.split(' ')[1]?.toUpperCase() || 'XX';
-    return `INV-GD${loc}-${String(id).padStart(4, '0')}`;
-  };
+  const filteredData = inventoryData.filter(item =>
+    item.name.toLowerCase().includes(search.toLowerCase()) ||
+    item.location.toLowerCase().includes(search.toLowerCase()) ||
+    item.status.toLowerCase().includes(search.toLowerCase()) ||
+    item.itemCode.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const handleAddOrUpdate = () => {
-    if (!newItem.name || !newItem.quantity || !newItem.location || !newItem.status) {
-      return setSnackbar({ open: true, message: 'Semua field wajib diisi', severity: 'error' });
-    }
-    if (editMode) {
-      setInventoryData(prev =>
-        prev.map(item =>
-          item.id === newItem.id ? { ...newItem, quantity: +newItem.quantity } : item
-        )
-      );
-      setSnackbar({ open: true, message: 'Item diperbarui', severity: 'success' });
+  const handleOpenDrawer = (item = null) => {
+    if (item) {
+      setEditMode(true);
+      setCurrentItem(item);
     } else {
-      const id = inventoryData.length ? Math.max(...inventoryData.map(i => i.id)) + 1 : 1;
-      const itemCode = generateCode(newItem.location, id);
-      setInventoryData(prev => [...prev, { ...newItem, id, itemCode, quantity: +newItem.quantity }]);
-      setSnackbar({ open: true, message: 'Item ditambahkan', severity: 'success' });
+      setEditMode(false);
+      setCurrentItem({ id: null, name: '', quantity: '', location: '', status: 'Tersedia', itemCode: '' });
     }
-    setOpenDrawer(false);
-    setEditMode(false);
-    setNewItem({ name: '', quantity: '', location: '', status: '' });
-  };
-
-  const handleEdit = (item) => {
-    setNewItem(item);
-    setEditMode(true);
     setOpenDrawer(true);
   };
 
-  // Modified handleDelete to open confirmation dialog
-  const handleDeleteClick = (id) => {
-    setItemToDeleteId(id);
+  const handleCloseDrawer = () => {
+    setOpenDrawer(false);
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setCurrentItem(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = () => {
+    if (!currentItem.name || !currentItem.quantity || !currentItem.location || !currentItem.status || !currentItem.itemCode) {
+      setSnackbar({ open: true, message: 'Semua kolom wajib diisi!', severity: 'error' });
+      return;
+    }
+
+    if (editMode) {
+      setInventoryData(prev => prev.map(item =>
+        item.id === currentItem.id ? { ...currentItem, quantity: Number(currentItem.quantity) } : item
+      ));
+      setSnackbar({ open: true, message: 'Data item berhasil diperbarui!', severity: 'success' });
+    } else {
+      const newId = inventoryData.length ? Math.max(...inventoryData.map(d => d.id)) + 1 : 1;
+      setInventoryData(prev => [...prev, { ...currentItem, id: newId, quantity: Number(currentItem.quantity) }]);
+      setSnackbar({ open: true, message: 'Item berhasil ditambahkan!', severity: 'success' });
+    }
+    handleCloseDrawer();
+  };
+
+  const handleDeleteClick = (item) => {
+    setItemToDeleteId(item.id);
+    setItemToDeleteName(item.name);
     setOpenConfirmDialog(true);
   };
 
   const handleConfirmDelete = () => {
     setInventoryData(prev => prev.filter(item => item.id !== itemToDeleteId));
-    setSnackbar({ open: true, message: 'Item dihapus', severity: 'info' });
+    setSnackbar({ open: true, message: `Item '${itemToDeleteName}' berhasil dihapus!`, severity: 'info' });
     setOpenConfirmDialog(false);
     setItemToDeleteId(null);
+    setItemToDeleteName('');
   };
 
   const handleCloseConfirmDialog = () => {
     setOpenConfirmDialog(false);
     setItemToDeleteId(null);
+    setItemToDeleteName('');
   };
 
   const exportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredData);
+    const ws = XLSX.utils.json_to_sheet(inventoryData.map(item => ({
+      ID: item.id,
+      "Nama Item": item.name,
+      "Kuantitas": item.quantity,
+      "Lokasi": item.location,
+      "Status": item.status,
+      "Kode Item": item.itemCode
+    })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
-    XLSX.writeFile(wb, 'Inventory.xlsx');
+    XLSX.writeFile(wb, `Laporan_Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    setSnackbar({ open: true, message: 'Data diekspor ke Excel!', severity: 'success' });
   };
 
   const exportPDF = () => {
     const doc = new jsPDF();
-    doc.text("Laporan Inventory", 14, 16);
+    doc.setFontSize(16);
+    doc.text('Laporan Inventory Barang', 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 22);
+
     autoTable(doc, {
-      startY: 22,
-      head: [['Kode', 'Nama', 'Jumlah', 'Lokasi', 'Status']],
-      body: filteredData.map(i => [i.itemCode, i.name, i.quantity, i.location, i.status])
+      startY: 30,
+      head: [['ID', 'Nama Item', 'Kuantitas', 'Lokasi', 'Status', 'Kode Item']],
+      body: inventoryData.map(i => [
+        i.id, i.name, i.quantity, i.location, i.status, i.itemCode
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: 'bold' }
     });
-    doc.save('Inventory.pdf');
+    doc.save(`Laporan_Inventory_${new Date().toISOString().slice(0, 10)}.pdf`);
+    setSnackbar({ open: true, message: 'Data diekspor ke PDF!', severity: 'success' });
   };
 
-  const filteredData = inventoryData
-    .filter(item => statusFilter === 'Semua' || item.status === statusFilter)
-    .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  const getChipColor = (status) => {
+  const getStatusColor = (status) => {
     if (status === 'Tersedia') return 'success';
     if (status === 'Limit') return 'warning';
-    return 'error';
+    if (status === 'Tidak Tersedia') return 'error';
+    if (status === 'Diproduksi') return 'info';
+    // Removed specific color assignments for 'Overhaul' and 'Rekayasa' as requested.
+    if (status === 'Perbaikan') return 'default';
+    return 'default'; // Default for Overhaul, Rekayasa, and any other unhandled status
   };
 
   const totalItems = inventoryData.length;
+  const availableItems = inventoryData.filter(item => item.status === 'Tersedia').length;
+  const limitedItems = inventoryData.filter(item => item.status === 'Limit').length;
+  const unavailableItems = inventoryData.filter(item => item.status === 'Tidak Tersedia').length;
+  const producedItems = inventoryData.filter(item => item.status === 'Diproduksi').length;
+  const overhaulItems = inventoryData.filter(item => item.status === 'Overhaul').length;
+  const engineeredItems = inventoryData.filter(item => item.status === 'Rekayasa').length;
+  const repairedItems = inventoryData.filter(item => item.status === 'Perbaikan').length;
+
   const totalQuantity = inventoryData.reduce((sum, item) => sum + item.quantity, 0);
 
+
   return (
-    <Box sx={{ px: { xs: 2, md: 4 }, py: 4 }}>
+    <Box sx={{ p: { xs: 2, md: 4 } }}>
       <Box display="flex" alignItems="center" mb={3}>
-        <InventoryIcon sx={{ color: '#FF8C00', fontSize: 36, mr: 2 }} />
-        <Typography variant="h5" fontWeight="bold">Manajemen Inventory</Typography>
+        <InventoryIcon sx={{ color: '#007BFF', fontSize: 36, mr: 2 }} />
+        <Typography variant="h4" fontWeight="bold">Manajemen Inventory Barang</Typography>
       </Box>
 
-      {/* 📊 Ringkasan Inventory */}
+      {/* Ringkasan Data */}
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} sm={6} md={3}>
           <Card elevation={2}>
             <CardContent>
-              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Item Unik</Typography>
-              <Typography variant="h4" component="div" fontWeight="bold">{totalItems}</Typography>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Item Jenis</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold">{totalItems}</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card elevation={2}>
             <CardContent>
-              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Kuantitas</Typography>
-              <Typography variant="h4" component="div" fontWeight="bold">{totalQuantity}</Typography>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Kuantitas Barang</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold">{totalQuantity}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Tersedia</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="success.main">{availableItems}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Limit</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="warning.main">{limitedItems}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Diproduksi</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="info.main">{producedItems}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Overhaul</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="default">{overhaulItems}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Rekayasa</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="default">{engineeredItems}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Perbaikan</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold" color="default">{repairedItems}</Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
-      <Divider sx={{ mb: 3 }} />
 
-      {/* 🔍 Filter & Aksi */}
-      <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2} mb={2} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
+      {/* Filter & Aksi */}
+      <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2} mb={3} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
         <TextField
           size="small"
-          label="Cari Item"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          label="Cari Nama/Lokasi/Status/Kode"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
           sx={{ flexGrow: 1 }}
         />
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Status</InputLabel>
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} label="Status">
-            <MenuItem value="Semua">Semua</MenuItem>
-            <MenuItem value="Tersedia">Tersedia</MenuItem>
-            <MenuItem value="Limit">Limit</MenuItem>
-            <MenuItem value="Habis">Habis</MenuItem>
-          </Select>
-        </FormControl>
         <Box display="flex" gap={1} flexWrap="wrap">
-          <Button onClick={exportExcel} variant="outlined" startIcon={<Download />}>Excel</Button>
-          <Button onClick={exportPDF} variant="outlined" startIcon={<Download />}>PDF</Button>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#E07B00' } }}
-            onClick={() => { setOpenDrawer(true); setEditMode(false); setNewItem({ name: '', quantity: '', location: '', status: '' }); }}
-          >
-            Tambah
-          </Button>
+          <Button variant="outlined" startIcon={<Download />} onClick={exportExcel}>Excel</Button>
+          <Button variant="outlined" startIcon={<Download />} onClick={exportPDF}>PDF</Button>
         </Box>
       </Box>
 
-      {/* 📋 Tabel Inventory */}
+      {/* Tabel Inventory */}
       <TableContainer component={Paper} elevation={2}>
         <Table>
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
             <TableRow>
-              <TableCell sx={{ fontWeight: 'bold' }}>Kode</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Nama</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Jumlah</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Nama Item</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Kode Item</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Kuantitas</TableCell>
               <TableCell sx={{ fontWeight: 'bold' }}>Lokasi</TableCell>
               <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
               <TableCell align="center" sx={{ fontWeight: 'bold' }}>Aksi</TableCell>
@@ -187,49 +268,92 @@ export default function Inventory() {
           <TableBody>
             {filteredData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">Tidak ada data inventory ditemukan.</TableCell>
+                <TableCell colSpan={6} align="center">Tidak ada item inventory ditemukan.</TableCell>
               </TableRow>
             ) : (
-              filteredData.map(row => (
-                <TableRow key={row.id} hover>
-                  <TableCell>{row.itemCode}</TableCell>
-                  <TableCell>{row.name}</TableCell>
-                  <TableCell>{row.quantity}</TableCell>
-                  <TableCell>{row.location}</TableCell>
+              filteredData.map(item => (
+                <TableRow key={item.id} hover>
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.itemCode}</TableCell>
+                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.location}</TableCell>
                   <TableCell>
-                    <Chip label={row.status} color={getChipColor(row.status)} size="small" />
+                    <Chip label={item.status} color={getStatusColor(item.status)} size="small" />
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip title="Edit"><IconButton onClick={() => handleEdit(row)}><Edit color="primary" /></IconButton></Tooltip>
-                    <Tooltip title="Hapus"><IconButton onClick={() => handleDeleteClick(row.id)}><Delete color="error" /></IconButton></Tooltip>
+                    <Tooltip title="Edit">
+                      <IconButton onClick={() => handleOpenDrawer(item)}><Edit color="primary" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title="Hapus">
+                      <IconButton onClick={() => handleDeleteClick(item)}><Delete color="error" /></IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))
             )}
+            <TableRow>
+              <TableCell colSpan={5} align="right" sx={{ fontWeight: 'bold' }}>Total Keseluruhan Barang:</TableCell>
+              <TableCell align="left" sx={{ fontWeight: 'bold' }}>{totalQuantity}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell colSpan={6} align="center">
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
+                  onClick={() => handleOpenDrawer()}
+                >
+                  Tambah Item
+                </Button>
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
       </TableContainer>
 
-      {/* 📦 Drawer Tambah/Edit Item */}
+      {/* Drawer Tambah/Edit Item */}
       <Drawer
         anchor="right"
         open={openDrawer}
-        onClose={() => setOpenDrawer(false)}
-        PaperProps={{ sx: { width: { xs: '90%', sm: 450 } } }}
+        onClose={handleCloseDrawer}
+        PaperProps={{
+          sx: {
+            width: { xs: '90%', sm: 450 },
+            top: theme.mixins.toolbar.minHeight,
+            [theme.breakpoints.up('sm')]: {
+              top: theme.mixins.toolbar[theme.breakpoints.up('sm')].minHeight,
+            },
+            height: `calc(100vh - ${theme.mixins.toolbar.minHeight}px)`,
+            [theme.breakpoints.up('sm')]: {
+              height: `calc(100vh - ${theme.mixins.toolbar[theme.breakpoints.up('sm')].minHeight}px)`,
+            },
+            backgroundColor: theme.palette.background.paper,
+          },
+        }}
       >
         <Box sx={{ p: 3 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h6" fontWeight="bold">{editMode ? 'Edit Item' : 'Tambah Item Baru'}</Typography>
-            <IconButton onClick={() => setOpenDrawer(false)}><Close /></IconButton>
+            <Typography variant="h6" fontWeight="bold">{editMode ? 'Edit Item Inventory' : 'Tambah Item Inventory Baru'}</Typography>
+            <IconButton onClick={handleCloseDrawer}><Close /></IconButton>
           </Box>
-          <Divider sx={{ mb: 3 }} />
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Nama Item"
-                value={newItem.name}
-                onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
+                name="name"
+                value={currentItem.name}
+                onChange={handleChange}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Kode Item"
+                name="itemCode"
+                value={currentItem.itemCode}
+                onChange={handleChange}
                 required
               />
             </Grid>
@@ -237,9 +361,10 @@ export default function Inventory() {
               <TextField
                 fullWidth
                 label="Kuantitas"
+                name="quantity"
                 type="number"
-                value={newItem.quantity}
-                onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
+                value={currentItem.quantity}
+                onChange={handleChange}
                 required
               />
             </Grid>
@@ -247,8 +372,9 @@ export default function Inventory() {
               <TextField
                 fullWidth
                 label="Lokasi"
-                value={newItem.location}
-                onChange={(e) => setNewItem(prev => ({ ...prev, location: e.target.value }))}
+                name="location"
+                value={currentItem.location}
+                onChange={handleChange}
                 required
               />
             </Grid>
@@ -256,24 +382,27 @@ export default function Inventory() {
               <FormControl fullWidth required>
                 <InputLabel>Status</InputLabel>
                 <Select
-                  value={newItem.status}
+                  name="status"
+                  value={currentItem.status}
                   label="Status"
-                  onChange={(e) => setNewItem(prev => ({ ...prev, status: e.target.value }))}
+                  onChange={handleChange}
                 >
                   <MenuItem value="Tersedia">Tersedia</MenuItem>
                   <MenuItem value="Limit">Limit</MenuItem>
-                  <MenuItem value="Habis">Habis</MenuItem>
+                  <MenuItem value="Tidak Tersedia">Tidak Tersedia</MenuItem>
+                  <MenuItem value="Diproduksi">Diproduksi</MenuItem>
+                  <MenuItem value="Perbaikan">Perbaikan</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12}>
               <Button
                 variant="contained"
-                sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#E07B00' }, mt: 2 }}
+                sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' }, mt: 2 }}
                 fullWidth
-                onClick={handleAddOrUpdate}
+                onClick={handleSave}
               >
-                {editMode ? 'Perbarui' : 'Tambah'}
+                {editMode ? 'Perbarui Data' : 'Tambah Data'}
               </Button>
             </Grid>
           </Grid>
@@ -287,23 +416,38 @@ export default function Inventory() {
         aria-labelledby="alert-dialog-title"
         aria-describedby="alert-dialog-description"
       >
-        <DialogTitle id="alert-dialog-title">{"Konfirmasi Hapus Item"}</DialogTitle>
+        <DialogTitle id="alert-dialog-title">
+          <Box display="flex" alignItems="center">
+            <WarningIcon color="warning" sx={{ mr: 1 }} /> Konfirmasi Hapus Item
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <DialogContentText id="alert-dialog-description">
-            Anda yakin ingin menghapus item ini dari inventory? Tindakan ini tidak dapat dibatalkan.
+            Anda yakin ingin menghapus item "<strong>{itemToDeleteName}</strong>" ini dari inventory? Tindakan ini tidak dapat dibatalkan.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseConfirmDialog}>Batal</Button>
-          <Button onClick={handleConfirmDelete} autoFocus color="error">
+          <Button onClick={handleCloseConfirmDialog} color="primary">
+            Batal
+          </Button>
+          <Button onClick={handleConfirmDelete} color="error" autoFocus>
             Hapus
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Snackbar Notifikasi */}
-      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>

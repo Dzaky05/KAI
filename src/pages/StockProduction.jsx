@@ -10,7 +10,14 @@ import {
   IconButton,
   Badge,
   Avatar,
-  Chip
+  Chip,
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableContainer, 
+  TableHead, 
+  TableRow, 
+  Paper 
 } from "@mui/material";
 import { 
   Storage as StorageIcon,
@@ -84,6 +91,13 @@ const StockProduction = () => {
     }
   ];
 
+  // Filter data for the table as requested
+  const tabulasiData = productionData.filter(item => 
+    item.title === "Stock Production" || 
+    item.title === "Overhaul Point Machine" || 
+    item.title === "Produksi Radio Lokomotif"
+  );
+
   const recentActivities = [
     { id: 1, action: "Product Tertinggi: Personalis", time: "5 menit lalu", status: "completed" },
     { id: 2, action: "Notebook perspecsation", time: "12 menit lalu", status: "in-progress" },
@@ -148,6 +162,71 @@ const StockProduction = () => {
           </IconButton>
         </Box>
       </Box>
+
+      {/* Tabulasi Section */}
+      <Card sx={{ 
+        borderRadius: 3,
+        boxShadow: '0 4px 20px 0 rgba(0,0,0,0.08)',
+        mb: 4,
+        transition: 'transform 0.3s ease-in-out',
+        '&:hover': {
+          transform: 'translateY(-2px)'
+        }
+      }}>
+        <CardContent>
+          <Typography variant="h6" component="div" sx={{ fontWeight: '600', mb: 2 }}>
+            Ringkasan Produksi Kunci
+          </Typography>
+          <TableContainer component={Paper} sx={{ boxShadow: 'none', border: '1px solid #e0e0e0' }}>
+            <Table sx={{ minWidth: 650 }} aria-label="simple table">
+              <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 'bold' }}>Nama Produksi</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>Progress</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>Detail</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {tabulasiData.map((row, index) => (
+                  <TableRow
+                    key={index}
+                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                  >
+                    <TableCell component="th" scope="row">
+                      {row.title}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={row.progress} 
+                          sx={{ 
+                            width: 100,
+                            height: 8,
+                            borderRadius: 5,
+                            backgroundColor: '#e0e0e0',
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 5,
+                              backgroundColor: getProgressColor(row.progress)
+                            }
+                          }} 
+                        />
+                        <Typography variant="body2" sx={{ 
+                          fontWeight: 'bold',
+                          color: getProgressColor(row.progress)
+                        }}>
+                          {row.progress}%
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{row.details}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
 
       {/* Progress Cards Grid */}
       <Box

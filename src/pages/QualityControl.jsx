@@ -26,6 +26,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   Science as ScienceIcon,
@@ -34,6 +36,10 @@ import {
   Clear as ClearIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
+  Build as BuildIcon,
+  Engineering as EngineeringIcon,
+  Factory as FactoryIcon,
+  Inventory as InventoryIcon,
 } from '@mui/icons-material';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
@@ -41,19 +47,36 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const initialQcData = [
-  { id: "QC-001", product: "Radio Lokomotif", batch: "BATCH-2023-11", status: "Lulus", tested: 25, passed: 25, date: "2023-11-05" },
-  { id: "QC-002", product: "Way Station", batch: "BATCH-2023-10", status: "Lulus", tested: 30, passed: 28, date: "2023-10-28" },
-  { id: "QC-003", product: "Sentranik", batch: "BATCH-2023-11", status: "Dalam Proses", tested: 15, passed: 12, date: "2023-11-12" },
-  { id: "QC-004", product: "Gentanik", batch: "BATCH-2023-09", status: "Tidak Lulus", tested: 20, passed: 15, date: "2023-09-20" },
-];
+// Sample data for different departments
+const initialData = {
+  production: [
+    { id: "PRD-001", product: "Radio Lokomotif", batch: "BATCH-2023-11", status: "Lulus", tested: 25, passed: 25, date: "2023-11-05", department: "Production" },
+    { id: "PRD-002", product: "Way Station", batch: "BATCH-2023-10", status: "Lulus", tested: 30, passed: 28, date: "2023-10-28", department: "Production" },
+    { id: "PRD-003", product: "Sentranik", batch: "BATCH-2023-11", status: "Dalam Proses", tested: 15, passed: 12, date: "2023-11-12", department: "Production" },
+  ],
+  overhaul: [
+    { id: "OVH-001", product: "Point Machine A", batch: "BATCH-2023-09", status: "Tidak Lulus", tested: 20, passed: 15, date: "2023-09-20", department: "Overhaul" },
+    { id: "OVH-002", product: "Point Machine B", batch: "BATCH-2023-10", status: "Lulus", tested: 18, passed: 18, date: "2023-10-15", department: "Overhaul" },
+  ],
+  engineering: [
+    { id: "ENG-001", product: "Control Panel", batch: "BATCH-2023-11", status: "Lulus", tested: 10, passed: 9, date: "2023-11-08", department: "Engineering" },
+    { id: "ENG-002", product: "Signal System", batch: "BATCH-2023-10", status: "Dalam Proses", tested: 12, passed: 10, date: "2023-10-30", department: "Engineering" },
+  ],
+  stock: [
+    { id: "STK-001", product: "Battery Pack", batch: "BATCH-2023-11", status: "Lulus", tested: 50, passed: 48, date: "2023-11-10", department: "Stock" },
+    { id: "STK-002", product: "Cable Set", batch: "BATCH-2023-09", status: "Tidak Lulus", tested: 30, passed: 25, date: "2023-09-25", department: "Stock" },
+  ],
+};
 
 export default function QualityControl() {
-  const [qcData, setQcData] = useState(initialQcData);
+  const [activeTab, setActiveTab] = useState('all');
+  const [data, setData] = useState(initialData);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc');
   const [openAddModal, setOpenAddModal] = useState(false);
+  const [openRepairModal, setOpenRepairModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
   const [newQcEntry, setNewQcEntry] = useState({
     product: '',
     batch: '',
@@ -61,7 +84,34 @@ export default function QualityControl() {
     passed: '',
     status: '',
     date: '',
+    department: 'Production',
   });
+
+  // Combine all data for the "All" tab
+  const allData = useMemo(() => {
+    return [
+      ...data.production,
+      ...data.overhaul,
+      ...data.engineering,
+      ...data.stock,
+    ];
+  }, [data]);
+
+  // Get current data based on active tab
+  const currentData = useMemo(() => {
+    switch (activeTab) {
+      case 'production': return data.production;
+      case 'overhaul': return data.overhaul;
+      case 'engineering': return data.engineering;
+      case 'stock': return data.stock;
+      default: return allData;
+    }
+  }, [activeTab, data, allData]);
+
+  // Handles tab changes
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
 
   // Handles changes in the search input field
   const handleSearchChange = (event) => {
@@ -76,10 +126,8 @@ export default function QualityControl() {
   // Handles sorting of table columns
   const handleSort = (column) => {
     if (sortColumn === column) {
-      // If the same column is clicked, toggle sort direction
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      // If a new column is clicked, set it as the sort column and default to ascending
       setSortColumn(column);
       setSortDirection('asc');
     }
@@ -100,7 +148,20 @@ export default function QualityControl() {
       passed: '',
       status: '',
       date: '',
+      department: 'Production',
     });
+  };
+
+  // Opens the repair modal
+  const handleOpenRepairModal = (item) => {
+    setSelectedItem(item);
+    setOpenRepairModal(true);
+  };
+
+  // Closes the repair modal
+  const handleCloseRepairModal = () => {
+    setOpenRepairModal(false);
+    setSelectedItem(null);
   };
 
   // Handles changes in the "Add New QC Entry" form fields
@@ -109,28 +170,53 @@ export default function QualityControl() {
     setNewQcEntry((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Adds a new QC entry to the qcData state
+  // Adds a new QC entry to the appropriate department
   const handleAddNewQc = () => {
-    // Generate a simple unique ID for demonstration purposes
-    const newId = `QC-${String(qcData.length + 1).padStart(3, '0')}`;
+    const department = newQcEntry.department.toLowerCase();
+    const newId = `${department === 'production' ? 'PRD' : 
+                  department === 'overhaul' ? 'OVH' : 
+                  department === 'engineering' ? 'ENG' : 'STK'}-${String(data[department].length + 1).padStart(3, '0')}`;
+    
     const entryToAdd = {
       id: newId,
       ...newQcEntry,
-      // Convert tested and passed values to integers
       tested: parseInt(newQcEntry.tested),
       passed: parseInt(newQcEntry.passed),
     };
-    // Update the qcData state with the new entry
-    setQcData((prev) => [...prev, entryToAdd]);
-    // Close the modal after adding the entry
+
+    // Update the appropriate department data
+    setData(prev => ({
+      ...prev,
+      [department]: [...prev[department], entryToAdd]
+    }));
+
     handleCloseAddModal();
   };
 
-  // Memoized data for filtering and sorting the QC table
-  const filteredAndSortedData = useMemo(() => {
-    let tempData = [...qcData];
+  // Handles sending item back to its original department for repair
+  const handleSendForRepair = () => {
+    if (!selectedItem) return;
 
-    // Apply search filter if searchTerm is not empty
+    // Here you would typically send the item back to its original department
+    // For demonstration, we'll just update its status
+    const department = selectedItem.department.toLowerCase();
+    const updatedData = data[department].map(item => 
+      item.id === selectedItem.id ? { ...item, status: "Dalam Perbaikan" } : item
+    );
+
+    setData(prev => ({
+      ...prev,
+      [department]: updatedData
+    }));
+
+    handleCloseRepairModal();
+  };
+
+  // Memoized data for filtering and sorting
+  const filteredAndSortedData = useMemo(() => {
+    let tempData = [...currentData];
+
+    // Apply search filter
     if (searchTerm) {
       tempData = tempData.filter(item =>
         Object.values(item).some(value =>
@@ -139,70 +225,69 @@ export default function QualityControl() {
       );
     }
 
-    // Apply sorting if a sortColumn is selected
+    // Apply sorting
     if (sortColumn) {
       tempData.sort((a, b) => {
         let valA = a[sortColumn];
         let valB = b[sortColumn];
 
-        // Special handling for numeric columns
         if (sortColumn === 'tested' || sortColumn === 'passed') {
           valA = parseInt(valA);
           valB = parseInt(valB);
         }
 
-        // Compare values based on sort direction
         if (valA < valB) {
           return sortDirection === 'asc' ? -1 : 1;
         }
         if (valA > valB) {
           return sortDirection === 'asc' ? 1 : -1;
         }
-        return 0; // Values are equal
+        return 0;
       });
     }
     return tempData;
-  }, [qcData, searchTerm, sortColumn, sortDirection]); // Dependencies for memoization
+  }, [currentData, searchTerm, sortColumn, sortDirection]);
 
-  // Calculate total tested and passed items
-  const totalTested = qcData.reduce((acc, item) => acc + item.tested, 0);
-  const totalPassed = qcData.reduce((acc, item) => acc + item.passed, 0);
-  // Calculate overall pass rate, handling division by zero
+  // Calculate statistics
+  const totalTested = currentData.reduce((acc, item) => acc + item.tested, 0);
+  const totalPassed = currentData.reduce((acc, item) => acc + item.passed, 0);
   const overallPassRate = totalTested > 0 ? Math.round((totalPassed / totalTested) * 100) : 0;
 
-  // Count occurrences of each status
   const statusCounts = {
-    "Lulus": qcData.filter(q => q.status === "Lulus").length,
-    "Dalam Proses": qcData.filter(q => q.status === "Dalam Proses").length,
-    "Tidak Lulus": qcData.filter(q => q.status === "Tidak Lulus").length,
+    "Lulus": currentData.filter(q => q.status === "Lulus").length,
+    "Dalam Proses": currentData.filter(q => q.status === "Dalam Proses").length,
+    "Tidak Lulus": currentData.filter(q => q.status === "Tidak Lulus").length,
+    "Dalam Perbaikan": currentData.filter(q => q.status === "Dalam Perbaikan").length,
   };
 
-  // Data for the Doughnut chart
   const doughnutData = {
-    labels: ['Lulus', 'Dalam Proses', 'Tidak Lulus'],
+    labels: ['Lulus', 'Dalam Proses', 'Tidak Lulus', 'Dalam Perbaikan'],
     datasets: [
       {
-        data: [statusCounts["Lulus"], statusCounts["Dalam Proses"], statusCounts["Tidak Lulus"]],
-        backgroundColor: ['#4CAF50', '#FF9800', '#F44336'], // Green, Orange, Red
-        hoverBackgroundColor: ['#66BB6A', '#FFB74D', '#E57373'], // Lighter shades for hover effect
+        data: [
+          statusCounts["Lulus"], 
+          statusCounts["Dalam Proses"], 
+          statusCounts["Tidak Lulus"],
+          statusCounts["Dalam Perbaikan"]
+        ],
+        backgroundColor: ['#4CAF50', '#FF9800', '#F44336', '#2196F3'],
+        hoverBackgroundColor: ['#66BB6A', '#FFB74D', '#E57373', '#42A5F5'],
       },
     ],
   };
 
-  // Options for the Doughnut chart
   const doughnutOptions = {
     responsive: true,
-    maintainAspectRatio: false, // Allows the chart to fit into its container
+    maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'right', // Position legend on the right side
+        position: 'right',
         labels: {
-          usePointStyle: true, // Use circular points for legend items
+          usePointStyle: true,
         },
       },
       tooltip: {
         callbacks: {
-          // Custom tooltip label to show value and percentage
           label: function(context) {
             const label = context.label || '';
             const value = context.raw;
@@ -221,6 +306,17 @@ export default function QualityControl() {
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
         <ScienceIcon sx={{ color: '#9C27B0', mr: 2 }} />
         <Typography variant="h4" fontWeight="bold">Quality Control</Typography>
+      </Box>
+
+      {/* Tabs for different departments */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={activeTab} onChange={handleTabChange} aria-label="department tabs">
+          <Tab label="Semua" value="all" />
+          <Tab label="Produksi" value="production" icon={<FactoryIcon />} iconPosition="start" />
+          <Tab label="Overhaul" value="overhaul" icon={<BuildIcon />} iconPosition="start" />
+          <Tab label="Rekayasa" value="engineering" icon={<EngineeringIcon />} iconPosition="start" />
+          <Tab label="Stok" value="stock" icon={<InventoryIcon />} iconPosition="start" />
+        </Tabs>
       </Box>
 
       {/* Add QC Button and Search Bar Section */}
@@ -274,10 +370,11 @@ export default function QualityControl() {
                 <TableRow>
                   {[
                     { label: 'ID QC', id: 'id' },
+                    { label: 'Departemen', id: 'department' },
                     { label: 'Produk', id: 'product' },
                     { label: 'Batch', id: 'batch' },
                     { label: 'Status', id: 'status' },
-                    { label: 'Tested/Passed', id: 'tested' }, // Column for sorting by 'tested' count
+                    { label: 'Tested/Passed', id: 'tested' },
                     { label: 'Pass Rate', id: 'passRate' },
                     { label: 'Tanggal', id: 'date' },
                     { label: 'Aksi', id: 'action' }
@@ -285,11 +382,9 @@ export default function QualityControl() {
                     <TableCell
                       key={col.id}
                       sx={{ fontWeight: 'bold', cursor: col.id !== 'action' && col.id !== 'passRate' ? 'pointer' : 'default' }}
-                      // Enable sorting only for specific columns
                       onClick={() => col.id !== 'action' && col.id !== 'passRate' && handleSort(col.id)}
                     >
                       {col.label}
-                      {/* Display sort icons if the column is currently sorted */}
                       {sortColumn === col.id && (
                         sortDirection === 'asc' ? <ArrowUpwardIcon fontSize="small" sx={{ verticalAlign: 'middle' }} /> : <ArrowDownwardIcon fontSize="small" sx={{ verticalAlign: 'middle' }} />
                       )}
@@ -299,27 +394,27 @@ export default function QualityControl() {
               </TableHead>
               <TableBody>
                 {filteredAndSortedData.map((row) => {
-                  // Calculate pass rate for each row, handling division by zero
                   const passRate = row.tested > 0 ? Math.round((row.passed / row.tested) * 100) : 0;
-                  // Map status to corresponding color for LinearProgress bar
                   const colorMap = {
-                    "Lulus": '#4CAF50', // Green
-                    "Dalam Proses": '#FF9800', // Orange
-                    "Tidak Lulus": '#F44336' // Red
+                    "Lulus": '#4CAF50',
+                    "Dalam Proses": '#FF9800',
+                    "Tidak Lulus": '#F44336',
+                    "Dalam Perbaikan": '#2196F3'
                   };
                   return (
                     <TableRow key={row.id} hover>
                       <TableCell>{row.id}</TableCell>
+                      <TableCell>{row.department}</TableCell>
                       <TableCell sx={{ fontWeight: 'bold' }}>{row.product}</TableCell>
                       <TableCell>{row.batch}</TableCell>
                       <TableCell>
                         <Chip
                           label={row.status}
                           variant="outlined"
-                          // Set chip color based on status
                           color={
                             row.status === "Lulus" ? "success" :
-                            row.status === "Dalam Proses" ? "warning" : "error"
+                            row.status === "Dalam Proses" ? "warning" :
+                            row.status === "Tidak Lulus" ? "error" : "info"
                           }
                         />
                       </TableCell>
@@ -344,8 +439,12 @@ export default function QualityControl() {
                       </TableCell>
                       <TableCell>{row.date}</TableCell>
                       <TableCell>
-                        <Button size="small" sx={{ color: '#9C27B0', textTransform: 'none' }}>
-                          Detail
+                        <Button 
+                          size="small" 
+                          sx={{ color: '#9C27B0', textTransform: 'none' }}
+                          onClick={() => handleOpenRepairModal(row)}
+                        >
+                          {row.status === "Tidak Lulus" ? "Perbaiki" : "Detail"}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -354,7 +453,6 @@ export default function QualityControl() {
               </TableBody>
             </Table>
           </TableContainer>
-          {/* Message when no data is found after filtering */}
           {filteredAndSortedData.length === 0 && (
             <Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
               Tidak ada data Quality Control yang ditemukan.
@@ -372,11 +470,12 @@ export default function QualityControl() {
               <Typography variant="h6" fontWeight="bold" mb={2}>Statistik QC</Typography>
               <Grid container spacing={2}>
                 {[
-                  { label: "Total QC", value: qcData.length, color: "#9C27B0", bg: 'rgba(156, 39, 176, 0.1)' },
+                  { label: "Total QC", value: currentData.length, color: "#9C27B0", bg: 'rgba(156, 39, 176, 0.1)' },
                   { label: "Lulus", value: statusCounts["Lulus"], color: "#4CAF50", bg: 'rgba(76, 175, 80, 0.1)' },
-                  { label: "Tidak Lulus", value: statusCounts["Tidak Lulus"], color: "#F44336", bg: 'rgba(244, 67, 54, 0.1)' }
+                  { label: "Tidak Lulus", value: statusCounts["Tidak Lulus"], color: "#F44336", bg: 'rgba(244, 67, 54, 0.1)' },
+                  { label: "Dalam Perbaikan", value: statusCounts["Dalam Perbaikan"], color: "#2196F3", bg: 'rgba(33, 150, 243, 0.1)' }
                 ].map((stat, i) => (
-                  <Grid item xs={4} key={i}>
+                  <Grid item xs={6} sm={3} key={i}>
                     <Card sx={{ textAlign: 'center', backgroundColor: stat.bg, p: 2 }}>
                       <Typography variant="h4" fontWeight="bold" color={stat.color}>{stat.value}</Typography>
                       <Typography variant="body2">{stat.label}</Typography>
@@ -384,7 +483,7 @@ export default function QualityControl() {
                   </Grid>
                 ))}
               </Grid>
-              {/* Doughnut Chart for status distribution */}
+              {/* Doughnut Chart */}
               <Box sx={{ mt: 3, height: 200, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                 <Doughnut data={doughnutData} options={doughnutOptions} />
               </Box>
@@ -423,11 +522,27 @@ export default function QualityControl() {
         </Grid>
       </Grid>
 
-      {/* Add QC Modal (Dialog) */}
+      {/* Add QC Modal */}
       <Dialog open={openAddModal} onClose={handleCloseAddModal} fullWidth maxWidth="sm">
         <DialogTitle>Tambah Entri Quality Control Baru</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="dense" variant="outlined">
+                <InputLabel>Departemen</InputLabel>
+                <Select
+                  name="department"
+                  value={newQcEntry.department}
+                  onChange={handleNewEntryChange}
+                  label="Departemen"
+                >
+                  <MenuItem value="Production">Produksi</MenuItem>
+                  <MenuItem value="Overhaul">Overhaul Point Machine</MenuItem>
+                  <MenuItem value="Engineering">Rekayasa</MenuItem>
+                  <MenuItem value="Stock">Stok Produksi</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 autoFocus
@@ -521,6 +636,42 @@ export default function QualityControl() {
             }}
           >
             Tambah
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Repair Modal */}
+      <Dialog open={openRepairModal} onClose={handleCloseRepairModal} fullWidth maxWidth="sm">
+        <DialogTitle>Kirim untuk Perbaikan</DialogTitle>
+        <DialogContent dividers>
+          {selectedItem && (
+            <Box>
+              <Typography variant="body1" gutterBottom>
+                Anda akan mengirim item berikut untuk perbaikan:
+              </Typography>
+              <Box sx={{ mt: 2, mb: 3, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+                <Typography><strong>ID:</strong> {selectedItem.id}</Typography>
+                <Typography><strong>Produk:</strong> {selectedItem.product}</Typography>
+                <Typography><strong>Batch:</strong> {selectedItem.batch}</Typography>
+                <Typography><strong>Departemen:</strong> {selectedItem.department}</Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                Item ini akan dikembalikan ke departemen asal untuk proses perbaikan.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseRepairModal} sx={{ color: '#9C27B0' }}>Batal</Button>
+          <Button
+            onClick={handleSendForRepair}
+            variant="contained"
+            sx={{
+              backgroundColor: '#9C27B0',
+              '&:hover': { backgroundColor: '#7B1FA2' },
+            }}
+          >
+            Konfirmasi Perbaikan
           </Button>
         </DialogActions>
       </Dialog>

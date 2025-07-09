@@ -56,7 +56,7 @@ const Login = ({ onLogin }) => {
         />
 
         <h2 className="login-title">PT KERETA API BALAI YASA & LAA</h2>
-        <p className="login-subtitle">Enter your credentials to access your account</p>
+        <p className="login-subtitle">MASUKAN EMAIL DAN PASSWORD ANDA</p>
 
         {error && (
           <div className="login-error">
@@ -149,7 +149,7 @@ const Login = ({ onLogin }) => {
         </div>
 
         <div className="login-footer">
-          © {new Date().getFullYear()} PT Kereta Api Indonesia
+          © {new Date().getFullYear()} PT KERETA API BALAI YASA & LAA. All rights reserved.
         </div>
       </div>
     </div>

@@ -4,13 +4,14 @@ import {
   List, ListItem, ListItemText, Divider, Chip, Button, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Stepper, Step, StepLabel,
   Snackbar, Alert, TextField, Grid, Tooltip,
-  Paper // <--- Pastikan Paper diimpor di sini
+  Paper, // Make sure Paper is imported here
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow // Import Table components
 } from '@mui/material';
 import {
   Add, CheckCircle, Warning, Error, Visibility, Delete,
   KeyboardArrowLeft, KeyboardArrowRight, Inventory2, Group, Build
 } from '@mui/icons-material';
-import { format } from 'date-fns'; // Untuk format tanggal
+import { format } from 'date-fns'; // For date formatting
 
 const initialProductionData = [
   {
@@ -20,9 +21,9 @@ const initialProductionData = [
     completed: 82,
     status: "Dalam Proses",
     startDate: "2023-11-01",
-    endDate: "2024-07-30", // Tanggal diperbarui agar lebih relevan dengan saat ini
+    endDate: "2024-07-30", // Date updated to be more relevant to current time
     workItems: ["Assembly Komponen Elektronik", "Testing Fungsional", "Quality Check Akhir", "Pengepakan"],
-    personnel: ["Team A (Elektronik)", "Team B (QC)"],
+    personnel: ["Tim Produksi"],
     materials: ["Modul RF", "Casing Polimer", "Kabel Koaksial", "Antena"],
     progress: [
       { date: "2024-07-01", completed: 20, notes: "Assembly 20% selesai" },
@@ -37,9 +38,9 @@ const initialProductionData = [
     completed: 45,
     status: "Dalam Proses",
     startDate: "2024-06-15",
-    endDate: "2024-07-28", // Tanggal diperbarui
+    endDate: "2024-07-28", // Date updated
     workItems: ["Instalasi Perangkat Keras", "Konfigurasi Sistem Jaringan", "Integrasi Software", "Uji Coba Lapangan"],
-    personnel: ["Team C (Instalasi)", "Team D (Jaringan)"],
+    personnel: ["Tim Produksi"],
     materials: ["Unit CPU Industri", "Router Jaringan", "Kabel Fiber Optik", "Sensor Lingkungan"],
     progress: [
       { date: "2024-06-25", completed: 30, notes: "Instalasi perangkat keras selesai" },
@@ -55,13 +56,29 @@ const initialProductionData = [
     startDate: "2024-01-01",
     endDate: "2024-03-31",
     workItems: ["Desain Sistem", "Manufaktur Komponen", "Instalasi Lapangan", "Sertifikasi"],
-    personnel: ["Team E (Desain)", "Team F (Manufaktur)"],
+    personnel: ["Tim Produksi"],
     materials: ["Mikrokontroler", "Transistor Daya", "Relai Solid State"],
     progress: [
       { date: "2024-02-01", completed: 50, notes: "Desain dan Manufaktur selesai" },
       { date: "2024-03-31", completed: 100, notes: "Proyek selesai dan disertifikasi" }
     ]
-  }
+  },
+  {
+    id: "PRD-002",
+    name: "Way Station KRL",
+    target: 50,
+    completed: 45,
+    status: "Dalam Proses",
+    startDate: "2024-06-15",
+    endDate: "2024-07-28", // Date updated
+    workItems: ["Instalasi Perangkat Keras", "Konfigurasi Sistem Jaringan", "Integrasi Software", "Uji Coba Lapangan"],
+    personnel: ["Tim Produksi"],
+    materials: ["Unit CPU Industri", "Router Jaringan", "Kabel Fiber Optik", "Sensor Lingkungan"],
+    progress: [
+      { date: "2024-06-25", completed: 30, notes: "Instalasi perangkat keras selesai" },
+      { date: "2024-07-05", completed: 45, notes: "Konfigurasi sistem 50% rampung" }
+    ]
+  },
 ];
 
 const steps = [
@@ -78,7 +95,7 @@ export default function Produksi() {
   const [activeStep, setActiveStep] = useState(0);
   const [newProduction, setNewProduction] = useState({
     name: "",
-    target: "", // Ubah ke string untuk TextField
+    target: "", // Change to string for TextField
     startDate: format(new Date(), 'yyyy-MM-dd'),
     endDate: "",
     workItems: [],
@@ -124,7 +141,7 @@ export default function Produksi() {
   const handleNext = () => {
     // Basic validation for each step
     switch (activeStep) {
-      case 0: // Informasi Umum
+      case 0: // General Information
         if (!newProduction.name || newProduction.target === "" || !newProduction.startDate || !newProduction.endDate) {
           setSnackbar({ open: true, message: "Harap lengkapi semua informasi umum.", severity: "error" });
           return;
@@ -138,13 +155,13 @@ export default function Produksi() {
           return;
         }
         break;
-      case 1: // Item Pekerjaan
+      case 1: // Work Items
         if (newProduction.workItems.length === 0) {
           setSnackbar({ open: true, message: "Harap tambahkan setidaknya satu item pekerjaan.", severity: "error" });
           return;
         }
         break;
-      case 2: // Personel
+      case 2: // Personnel
         if (newProduction.personnel.length === 0) {
           setSnackbar({ open: true, message: "Harap tambahkan setidaknya satu personel.", severity: "error" });
           return;
@@ -192,7 +209,7 @@ export default function Produksi() {
   const getStatusInfo = (status) => {
     if (status === "Selesai") return { color: "success", icon: <CheckCircle fontSize="small" /> };
     if (status === "Dalam Proses") return { color: "warning", icon: <Warning fontSize="small" /> };
-    return { color: "error", icon: <Error fontSize="small" /> }; // Misalnya untuk status "Tertunda" atau "Dibatalkan"
+    return { color: "error", icon: <Error fontSize="small" /> }; // E.g., for "Pending" or "Canceled" status
   };
 
   const handleOpenDetail = (item) => {
@@ -414,7 +431,7 @@ export default function Produksi() {
         <Typography variant="h4" fontWeight="bold">Manajemen Produksi Barang</Typography>
       </Box>
 
-      {/* Ringkasan Dashboard */}
+      {/* Summary Dashboard */}
       <Grid container spacing={3} mb={4}>
         <Grid item xs={12} sm={6} md={4}>
           <Card elevation={3} sx={{ backgroundColor: '#e3f2fd' }}>
@@ -447,13 +464,13 @@ export default function Produksi() {
               </Box>
               <Typography variant="h5" fontWeight="bold" color="success.dark">{completedProductions}</Typography>
             </CardContent>
-          </Card> {/* <--- Penutup tag yang salah, harusnya </Card> */}
+          </Card>
         </Grid>
       </Grid>
 
       <Divider sx={{ mb: 4 }} />
 
-      {/* Aksi Utama */}
+      {/* Main Action */}
       <Box display="flex" justifyContent="flex-end" mb={3}>
         <Button
           variant="contained"
@@ -465,77 +482,96 @@ export default function Produksi() {
         </Button>
       </Box>
 
-      {/* Daftar Produksi */}
-      <Grid container spacing={3}>
-        {productionData.length === 0 ? (
-          <Grid item xs={12}>
-            <Paper elevation={2} sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6" color="text.secondary">Belum ada data produksi.</Typography>
-              <Typography variant="body2" color="text.secondary">Klik "Buat Produksi Baru" untuk memulai.</Typography>
-            </Paper>
-          </Grid>
-        ) : (
-          productionData.map((item) => {
-            const progressPercentage = calculateProgressPercentage(item.completed, item.target);
-            const statusInfo = getStatusInfo(item.status);
-            const isCompleted = item.status === "Selesai";
+      {/* Production List - Now as a Table */}
+      <TableContainer component={Paper} elevation={3}>
+        <Table sx={{ minWidth: 650 }} aria-label="production table">
+          <TableHead>
+            <TableRow>
+              <TableCell>ID</TableCell>
+              <TableCell>Nama Produksi</TableCell>
+              <TableCell align="right">Target (Unit)</TableCell>
+              <TableCell align="right">Selesai (Unit)</TableCell>
+              <TableCell>Progress</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Periode</TableCell>
+              <TableCell>Personel</TableCell> {/* Added Personnel column */}
+              <TableCell align="center">Aksi</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {productionData.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} sx={{ textAlign: 'center', py: 3 }}>
+                  <Typography variant="h6" color="text.secondary">Belum ada data produksi.</Typography>
+                  <Typography variant="body2" color="text.secondary">Klik "Buat Produksi Baru" untuk memulai.</Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              productionData.map((item) => {
+                const progressPercentage = calculateProgressPercentage(item.completed, item.target);
+                const statusInfo = getStatusInfo(item.status);
+                const isCompleted = item.status === "Selesai";
 
-            return (
-              <Grid item xs={12} sm={6} md={4} key={item.id}>
-                <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle2" color="text.secondary">{item.id}</Typography>
+                return (
+                  <TableRow
+                    key={item.id}
+                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                  >
+                    <TableCell component="th" scope="row">
+                      {item.id}
+                    </TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell align="right">{item.target}</TableCell>
+                    <TableCell align="right">{item.completed}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: '100%', mr: 1 }}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={progressPercentage}
+                            sx={{
+                              height: 8,
+                              borderRadius: 5,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: isCompleted ? '#4caf50' : '#2196f3',
+                              },
+                            }}
+                          />
+                        </Box>
+                        <Box sx={{ minWidth: 35 }}>
+                          <Typography variant="body2" color="text.secondary">{progressPercentage}%</Typography>
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
                       <Chip
                         label={item.status}
                         color={statusInfo.color}
                         icon={statusInfo.icon}
                         size="small"
                       />
-                    </Box>
-                    <Typography variant="h6" component="div" fontWeight="bold" mb={1}>
-                      {item.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Target: {item.target} unit | Selesai: {item.completed} unit
-                    </Typography>
-                    <Box mt={2} mb={1}>
-                      <LinearProgress
-                        variant="determinate"
-                        value={progressPercentage}
-                        sx={{
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: '#e0e0e0',
-                          '& .MuiLinearProgress-bar': {
-                            backgroundColor: isCompleted ? '#4caf50' : '#2196f3',
-                          },
-                        }}
-                      />
-                      <Typography variant="body2" color="text.secondary" align="right" mt={0.5}>
-                        {progressPercentage}%
-                      </Typography>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Periode: {format(new Date(item.startDate), 'dd MMM yyyy')} - {format(new Date(item.endDate), 'dd MMM yyyy')}
-                    </Typography>
-                  </CardContent>
-                  <Box sx={{ p: 2, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<Visibility />}
-                      onClick={() => handleOpenDetail(item)}
-                    >
-                      Lihat Detail
-                    </Button>
-                  </Box>
-                </Card>
-              </Grid>
-            );
-          })
-        )}
-      </Grid>
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(item.startDate), 'dd MMM yyyy')} - {format(new Date(item.endDate), 'dd MMM yyyy')}
+                    </TableCell>
+                    <TableCell>
+                      {item.personnel.length > 0 ? item.personnel.join(', ') : 'N/A'}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="Lihat Detail">
+                        <IconButton onClick={() => handleOpenDetail(item)} size="small">
+                          <Visibility />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
       {/* Dialog Buat Produksi Baru */}
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)} maxWidth="sm" fullWidth>
@@ -647,7 +683,7 @@ export default function Produksi() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar Notifikasi */}
+      {/* Snackbar Notification */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}

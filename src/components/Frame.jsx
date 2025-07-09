@@ -188,233 +188,187 @@ export default function Frame({ children, onLogout }) {
         <Toolbar
           sx={{
             justifyContent: "space-between",
-            flexDirection: "column",
-            alignItems: "stretch",
+            flexDirection: "row", // Changed to row for horizontal layout
+            alignItems: "center", // Align items vertically in the center
             minHeight: "64px !important",
             p: 0,
-            gap: 1,
+            px: 2, // Added horizontal padding
+            gap: 2, // Added gap between elements
           }}
         >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-              px: 2,
-              pt: 1,
-              gap: 2,
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <IconButton
-                color="inherit"
-                aria-label="open drawer"
-                onClick={handleDrawerOpen}
-                edge="start"
-                sx={{ 
-                  mr: 1, 
-                  ...(open && { display: "none" }),
-                  '&:hover': {
-                    transform: 'scale(1.1)',
-                  },
-                  transition: 'transform 0.3s'
-                }}
-              >
-                <MenuIcon />
-              </IconButton>
-              <Typography
-                variant="h6"
-                noWrap
-                component="div"
-                sx={{
-                  color: "#fff",
-                  fontWeight: "bold",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                  fontSize: { xs: "1rem", sm: "1.25rem" },
-                  textShadow: '1px 1px 2px rgba(0,0,0,0.2)',
-                }}
-              >
-                PT KERETA API BALAI YASA & LAA
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Tooltip 
-                title="Toggle dark/light mode" 
-                componentsProps={{
-                  tooltip: {
-                    sx: {
-                      bgcolor: theme.palette.mode === 'dark' ? '#FF6D00' : '#E65100',
-                      color: 'white',
-                      fontSize: '0.8rem',
-                      boxShadow: theme.shadows[4],
-                    }
-                  }
-                }}
-              >
-                <IconButton 
-                  onClick={colorMode.toggleColorMode} 
-                  color="inherit"
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.2)',
-                      transform: 'rotate(180deg)',
-                    },
-                    transition: 'transform 0.5s'
-                  }}
-                >
-                  {theme.palette.mode === "dark" ? (
-                    <Brightness7 />
-                  ) : (
-                    <Brightness4 />
-                  )}
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Notifications">
-                <IconButton 
-                  color="inherit" 
-                  aria-label={`Show ${notifications} new notifications`}
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.2)',
-                    }
-                  }}
-                >
-                  <NotificationBadge badgeContent={notifications} color="error">
-                    <Notifications />
-                  </NotificationBadge>
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Account settings">
-                <IconButton
-                  onClick={handleOpenProfile}
-                  size="small"
-                  aria-controls={profile ? "account-menu" : undefined}
-                  aria-haspopup="true"
-                  aria-expanded={profile ? "true" : undefined}
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.2)',
-                    }
-                  }}
-                >
-                  <Avatar
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      background: "linear-gradient(135deg, #FF6D00, #FF9E40)",
-                      boxShadow: theme.shadows[2],
-                      color: "white",
-                      fontWeight: "bold",
-                      transition: 'transform 0.3s, box-shadow 0.3s',
-                      '&:hover': {
-                        transform: 'scale(1.1)',
-                        boxShadow: theme.shadows[4],
-                      }
-                    }}
-                  >
-                    M
-                  </Avatar>
-                </IconButton>
-              </Tooltip>
-            </Box>
-          </Box>
-
-          <Box
-            sx={{
-              width: "100%",
-              overflow: "hidden",
-              background: "rgba(255,255,255,0.15)",
-              height: 28,
-              display: "flex",
-              alignItems: "center",
-              borderBottom: "1px solid rgba(255,255,255,0.2)",
-            }}
-          >
-            <Box
-              component="span"
-              sx={{
-                display: "inline-block",
-                whiteSpace: "nowrap",
-                fontSize: "0.9rem",
-                fontWeight: "medium",
-                letterSpacing: "0.2px",
-                color: "#fff",
-                px: 2,
-                animation: "marquee 15s linear infinite",
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <IconButton
+              color="inherit"
+              aria-label="open drawer"
+              onClick={handleDrawerOpen}
+              edge="start"
+              sx={{ 
+                mr: 1, 
+                ...(open && { display: "none" }),
+                '&:hover': {
+                  transform: 'scale(1.1)',
+                },
+                transition: 'transform 0.3s'
               }}
             >
-              Selamat datang di Sistem Informasi Produksi PT KAI Balai Yasa &
-              LAA. Untuk bantuan, hubungi admin. | Welcome to the Production
-              Information System of PT KAI Balai Yasa & LAA.
+              <MenuIcon />
+            </IconButton>
+            <Typography
+              variant="h6"
+              noWrap
+              component="div"
+              sx={{
+                color: "#fff",
+                fontWeight: "bold",
+                textTransform: "uppercase",
+                letterSpacing: "1px",
+                fontSize: { xs: "1rem", sm: "1.25rem" },
+                textShadow: '1px 1px 2px rgba(0,0,0,0.2)',
+              }}
+            >
+              PT KERETA API BALAI YASA & LAA
+            </Typography>
+            {/* Horizontal navigation items */}
+            <Box
+              sx={{
+                display: "flex", // Always display flex
+                gap: "12px", //
+                ml: 3, // Add some margin to separate from title
+                "& .menu-item": {
+                  color: "white",
+                  fontWeight: "500",
+                  fontSize: "0.8rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    backgroundColor: "rgba(255,255,255,0.2)",
+                    transform: 'translateY(-2px)',
+                  },
+                  "&.active": {
+                    backgroundColor: "rgba(255,255,255,0.3)",
+                    fontWeight: "600",
+                    position: 'relative',
+                    '&:after': {
+                      content: '""',
+                      position: 'absolute',
+                      bottom: 0,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: '80%',
+                      height: 2,
+                      background: theme.palette.primary.main,
+                    }
+                  },
+                },
+              }}
+            >
+              {topNavItems.map((item) => (
+                <Link
+                  to={item.to}
+                  key={item.to}
+                  className={`menu-item ${
+                    location.pathname === item.to ? "active" : ""
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </Box>
-            <style>{`
-              @keyframes marquee {
-                0% { transform: translateX(100%); }
-                100% { transform: translateX(-100%); }
-              }
-              @keyframes pulse {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.2); }
-                100% { transform: scale(1); }
-              }
-            `}</style>
           </Box>
 
-          <Box
-            sx={{
-              display: { xs: "none", md: "flex" },
-              gap: "12px",
-              width: "100%",
-              px: 2,
-              pb: 1,
-              "& .menu-item": {
-                color: "white",
-                fontWeight: "500",
-                fontSize: "0.8rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                padding: "6px 12px",
-                borderRadius: "4px",
-                transition: "all 0.3s ease",
-                "&:hover": {
-                  backgroundColor: "rgba(255,255,255,0.2)",
-                  transform: 'translateY(-2px)',
-                },
-                "&.active": {
-                  backgroundColor: "rgba(255,255,255,0.3)",
-                  fontWeight: "600",
-                  position: 'relative',
-                  '&:after': {
-                    content: '""',
-                    position: 'absolute',
-                    bottom: 0,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: '80%',
-                    height: 2,
-                    background: theme.palette.primary.main,
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Tooltip 
+              title="Toggle dark/light mode" 
+              componentsProps={{
+                tooltip: {
+                  sx: {
+                    bgcolor: theme.palette.mode === 'dark' ? '#FF6D00' : '#E65100',
+                    color: 'white',
+                    fontSize: '0.8rem',
+                    boxShadow: theme.shadows[4],
                   }
-                },
-              },
-            }}
-          >
-            {topNavItems.map((item) => (
-              <Link
-                to={item.to}
-                key={item.to}
-                className={`menu-item ${
-                  location.pathname === item.to ? "active" : ""
-                }`}
+                }
+              }}
+            >
+              <IconButton 
+                onClick={colorMode.toggleColorMode} 
+                color="inherit"
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    transform: 'rotate(180deg)',
+                  },
+                  transition: 'transform 0.5s'
+                }}
               >
-                {item.label}
-              </Link>
-            ))}
+                {theme.palette.mode === "dark" ? (
+                  <Brightness7 />
+                ) : (
+                  <Brightness4 />
+                )}
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title="Notifications">
+              <IconButton 
+                color="inherit" 
+                aria-label={`Show ${notifications} new notifications`}
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                  }
+                }}
+              >
+                <NotificationBadge badgeContent={notifications} color="error">
+                  <Notifications />
+                </NotificationBadge>
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title="Account settings">
+              <IconButton
+                onClick={handleOpenProfile}
+                size="small"
+                aria-controls={profile ? "account-menu" : undefined}
+                aria-haspopup="true"
+                aria-expanded={profile ? "true" : undefined}
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                  }
+                }}
+              >
+                <Avatar
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    background: "linear-gradient(135deg, #FF6D00, #FF9E40)",
+                    boxShadow: theme.shadows[2],
+                    color: "white",
+                    fontWeight: "bold",
+                    transition: 'transform 0.3s, box-shadow 0.3s',
+                    '&:hover': {
+                      transform: 'scale(1.1)',
+                      boxShadow: theme.shadows[4],
+                    }
+                  }}
+                >
+                  M
+                </Avatar>
+              </IconButton>
+            </Tooltip>
           </Box>
+          {/* Removed the running text Box */}
+          <style>{`
+            @keyframes pulse {
+              0% { transform: scale(1); }
+              50% { transform: scale(1.2); }
+              100% { transform: scale(1); }
+            }
+          `}</style>
         </Toolbar>
       </AppBar>
 
