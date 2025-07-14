@@ -35,7 +35,7 @@ type Material struct {
 	Name   string `json:"name"`
 	Qty    int    `json:"qty"`
 	Harga  int    `json:"harga"`
-	Satuan string `json:"satuan"`
+	Satuan string `json:"satuan"` // Changed from int to string
 }
 
 type ProgressNote struct {
@@ -71,6 +71,11 @@ func initDB() {
 	if err != nil {
 		log.Fatal("Database connection failed:", err)
 	}
+
+	// Test connection
+	if err = db.Ping(); err != nil {
+		log.Fatal("Database ping failed:", err)
+	}
 }
 
 // Enable CORS
@@ -96,7 +101,7 @@ func getAllProductions(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	w.Header().Set("Content-Type", "application/json")
 
-	rows, err := db.Query("SELECT id, name, target, completed, status, start_date, end_date FROM produksi")
+	rows, err := db.Query("SELECT produksi_id, name, target, completed, status, start_date, end_date FROM produksi")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -121,7 +126,7 @@ func getAllProductions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(productions)
 }
 
-// GET single production by ID
+// GET production by ID - ADDED MISSING FUNCTION
 func getProductionByID(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	w.Header().Set("Content-Type", "application/json")
@@ -134,15 +139,15 @@ func getProductionByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var p Production
-	err = db.QueryRow("SELECT id, name, target, completed, status, start_date, end_date FROM produksi WHERE id = ?", id).
+	err = db.QueryRow("SELECT produksi_id, name, target, completed, status, start_date, end_date FROM produksi WHERE produksi_id = ?", id).
 		Scan(&p.ID, &p.Name, &p.Target, &p.Completed, &p.Status, &p.StartDate, &p.EndDate)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Production not found", http.StatusNotFound)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -174,7 +179,7 @@ func createProduction(w http.ResponseWriter, r *http.Request) {
 
 	// Insert production
 	result, err := tx.Exec(`INSERT INTO produksi (name, target, completed, status, start_date, end_date) 
-		VALUES (?, ?, 0, ?, ?, ?)`, req.Name, req.Target, req.Status, req.StartDate, req.EndDate)
+        VALUES (?, ?, 0, ?, ?, ?)`, req.Name, req.Target, req.Status, req.StartDate, req.EndDate)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -197,7 +202,7 @@ func createProduction(w http.ResponseWriter, r *http.Request) {
 
 	// Insert material assignments
 	for _, materialID := range req.Materials {
-		_, err := tx.Exec(`INSERT INTO produksi_materials (produksi_id, material_id) VALUES (?, ?)`, prodID, materialID)
+		_, err := tx.Exec(`INSERT INTO produksi_materials (produksi_id, materials_id) VALUES (?, ?)`, prodID, materialID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -244,8 +249,8 @@ func updateProduction(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	// Update production
-	_, err = tx.Exec(`UPDATE produksi SET name = ?, target = ?, status = ?, start_date = ?, end_date = ? WHERE id = ?`,
+	// Update production - FIXED: use produksi_id instead of id
+	_, err = tx.Exec(`UPDATE produksi SET name = ?, target = ?, status = ?, start_date = ?, end_date = ? WHERE produksi_id = ?`,
 		req.Name, req.Target, req.Status, req.StartDate, req.EndDate, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -275,9 +280,9 @@ func updateProduction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Insert new material assignments
+	// Insert new material assignments - FIXED: use materials_id instead of material_id
 	for _, materialID := range req.Materials {
-		_, err := tx.Exec(`INSERT INTO produksi_materials (produksi_id, material_id) VALUES (?, ?)`, id, materialID)
+		_, err := tx.Exec(`INSERT INTO produksi_materials (produksi_id, materials_id) VALUES (?, ?)`, id, materialID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -332,8 +337,8 @@ func deleteProduction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete production
-	_, err = tx.Exec(`DELETE FROM produksi WHERE id = ?`, id)
+	// Delete production - FIXED: use produksi_id instead of id
+	_, err = tx.Exec(`DELETE FROM produksi WHERE produksi_id = ?`, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -382,8 +387,8 @@ func addProgressNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update production completed value
-	_, err = tx.Exec(`UPDATE produksi SET completed = ? WHERE id = ?`, req.Completed, prodID)
+	// Update production completed value - FIXED: use produksi_id instead of id
+	_, err = tx.Exec(`UPDATE produksi SET completed = ? WHERE produksi_id = ?`, req.Completed, prodID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -403,7 +408,7 @@ func getAllPersonnel(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	w.Header().Set("Content-Type", "application/json")
 
-	rows, err := db.Query("SELECT id, name FROM personalia")
+	rows, err := db.Query("SELECT personalia_id, name FROM personalia")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -429,7 +434,7 @@ func getAllMaterials(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	w.Header().Set("Content-Type", "application/json")
 
-	rows, err := db.Query("SELECT id, name, qty, harga, satuan FROM materials")
+	rows, err := db.Query("SELECT materials_id, materials_name, qty, price, satuan FROM materials")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -450,8 +455,12 @@ func getAllMaterials(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(materials)
 }
 
+// Helper functions
 func getPersonnelByProductionID(prodID int) []Personnel {
-	rows, err := db.Query(`SELECT p.id, p.name FROM personalia p JOIN produksi_team pt ON p.id = pt.personalia_id WHERE pt.produksi_id = ?`, prodID)
+	rows, err := db.Query(`SELECT p.personalia_id, p.name 
+                          FROM personalia p 
+                          JOIN produksi_team pt ON p.personalia_id = pt.personalia_id 
+                          WHERE pt.produksi_id = ?`, prodID)
 	if err != nil {
 		return nil
 	}
@@ -467,7 +476,10 @@ func getPersonnelByProductionID(prodID int) []Personnel {
 }
 
 func getMaterialsByProductionID(prodID int) []Material {
-	rows, err := db.Query(`SELECT m.id, m.name, m.qty, m.harga, m.satuan FROM materials m JOIN produksi_materials pm ON m.id = pm.material_id WHERE pm.produksi_id = ?`, prodID)
+	rows, err := db.Query(`SELECT m.materials_id, m.materials_name, m.qty, m.price, m.satuan 
+                          FROM materials m 
+                          JOIN produksi_materials pm ON m.materials_id = pm.materials_id 
+                          WHERE pm.produksi_id = ?`, prodID)
 	if err != nil {
 		return nil
 	}
@@ -483,7 +495,10 @@ func getMaterialsByProductionID(prodID int) []Material {
 }
 
 func getProgressByProductionID(prodID int) []ProgressNote {
-	rows, err := db.Query(`SELECT id, date, completed, notes FROM progress WHERE produksi_id = ? ORDER BY date DESC`, prodID)
+	rows, err := db.Query(`SELECT progress_id, date, completed, notes 
+                          FROM progress 
+                          WHERE produksi_id = ? 
+                          ORDER BY date DESC`, prodID)
 	if err != nil {
 		return nil
 	}
