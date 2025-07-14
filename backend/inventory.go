@@ -3,177 +3,122 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 )
 
-type InventoryItem struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Quantity  int       `json:"quantity"`
-	Location  string    `json:"location"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+type Inventory struct {
+	ID        int    `json:"id"`
+	Nama      string `json:"name"`
+	Kuantitas int    `json:"quantity"`
+	Lokasi    string `json:"location"`
+	Status    string `json:"status"`
+	KodeItem  string `json:"itemCode"`
 }
 
-func connectDB() *sql.DB {
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "3306")
-	dbUser := getEnv("DB_USER", "root")
-	dbPass := getEnv("DB_PASS", "")
-	dbName := getEnv("DB_NAME", "kai_db")
+var db *sql.DB
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbUser, dbPass, dbHost, dbPort, dbName)
-
-	db, err := sql.Open("mysql", dsn)
+func koneksiDatabase() {
+	var err error
+	db, err = sql.Open("mysql", "root:@tcp(localhost:3306)/kai_db") // ganti user, pass, db jika perlu
 	if err != nil {
-		log.Fatal("DB connection failed:", err)
+		log.Fatal("Gagal koneksi database: ", err)
 	}
 	if err = db.Ping(); err != nil {
-		log.Fatal("DB not responding:", err)
+		log.Fatal("Gagal ping database: ", err)
 	}
-	return db
 }
 
-func getEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
-}
-
-// GET /api/inventory
-func getInventory(w http.ResponseWriter, r *http.Request) {
-	db := connectDB()
-	defer db.Close()
-
-	rows, err := db.Query(`SELECT id, name, quantity, location, status, created_at FROM inventory`)
+func ambilSemuaInventaris(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT id, name, quantity, location, status, itemCode FROM inventory")
 	if err != nil {
-		http.Error(w, "Failed to fetch data", http.StatusInternalServerError)
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	defer rows.Close()
 
-	var data []InventoryItem
+	var hasil []Inventory
 	for rows.Next() {
-		var item InventoryItem
-		if err := rows.Scan(&item.ID, &item.Name, &item.Quantity, &item.Location, &item.Status, &item.CreatedAt); err != nil {
-			http.Error(w, "Failed to read row", http.StatusInternalServerError)
+		var i Inventory
+		if err := rows.Scan(&i.ID, &i.Nama, &i.Kuantitas, &i.Lokasi, &i.Status, &i.KodeItem); err != nil {
+			http.Error(w, err.Error(), 500)
 			return
 		}
-		data = append(data, item)
+		hasil = append(hasil, i)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	json.NewEncoder(w).Encode(hasil)
 }
 
-// POST /api/inventory
-func addInventory(w http.ResponseWriter, r *http.Request) {
-	var item InventoryItem
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
+func ambilInventarisByID(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var i Inventory
+	err := db.QueryRow("SELECT id, name, quantity, location, status, itemCode FROM inventory WHERE id=?", id).
+		Scan(&i.ID, &i.Nama, &i.Kuantitas, &i.Lokasi, &i.Status, &i.KodeItem)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Data tidak ditemukan", 404)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), 500)
 		return
 	}
+	json.NewEncoder(w).Encode(i)
+}
 
-	db := connectDB()
-	defer db.Close()
-
-	query := `INSERT INTO inventory (name, quantity, location, status) VALUES (?, ?, ?, ?)`
-	_, err := db.Exec(query, item.Name, item.Quantity, item.Location, item.Status)
+func tambahInventaris(w http.ResponseWriter, r *http.Request) {
+	var i Inventory
+	if err := json.NewDecoder(r.Body).Decode(&i); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	_, err := db.Exec("INSERT INTO inventory (name, quantity, location, status, itemCode) VALUES (?, ?, ?, ?, ?)",
+		i.Nama, i.Kuantitas, i.Lokasi, i.Status, i.KodeItem)
 	if err != nil {
-		http.Error(w, "Failed to save to DB", http.StatusInternalServerError)
+		http.Error(w, err.Error(), 500)
 		return
 	}
-
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprint(w, "Inventory item added successfully")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Berhasil ditambahkan"})
 }
 
-// PUT /api/inventory?id=1
-func updateInventory(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
+func perbaruiInventaris(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var i Inventory
+	if err := json.NewDecoder(r.Body).Decode(&i); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	_, err := db.Exec("UPDATE inventory SET name=?, quantity=?, location=?, status=?, itemCode=? WHERE id=?",
+		i.Nama, i.Kuantitas, i.Lokasi, i.Status, i.KodeItem, id)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), 500)
 		return
 	}
-
-	var item InventoryItem
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
-		return
-	}
-
-	db := connectDB()
-	defer db.Close()
-
-	query := `UPDATE inventory SET name=?, quantity=?, location=?, status=? WHERE id=?`
-	_, err = db.Exec(query, item.Name, item.Quantity, item.Location, item.Status, id)
-	if err != nil {
-		http.Error(w, "Failed to update DB", http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Fprint(w, "Inventory item updated successfully")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Berhasil diperbarui"})
 }
 
-// DELETE /api/inventory?id=1
-func deleteInventory(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
+func hapusInventaris(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	_, err := db.Exec("DELETE FROM inventory WHERE id=?", id)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), 500)
 		return
 	}
-
-	db := connectDB()
-	defer db.Close()
-
-	_, err = db.Exec("DELETE FROM inventory WHERE id=?", id)
-	if err != nil {
-		http.Error(w, "Failed to delete from DB", http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Fprint(w, "Inventory item deleted successfully")
-}
-
-func enableCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == "OPTIONS" {
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/inventory", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			getInventory(w, r)
-		case "POST":
-			addInventory(w, r)
-		case "PUT":
-			updateInventory(w, r)
-		case "DELETE":
-			deleteInventory(w, r)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
+	koneksiDatabase()
+	r := mux.NewRouter()
 
-	fmt.Println("Inventory API running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", enableCORS(mux)))
+	r.HandleFunc("/api/inventory", ambilSemuaInventaris).Methods("GET")
+	r.HandleFunc("/api/inventory/{id}", ambilInventarisByID).Methods("GET")
+	r.HandleFunc("/api/inventory", tambahInventaris).Methods("POST")
+	r.HandleFunc("/api/inventory/{id}", perbaruiInventaris).Methods("PUT")
+	r.HandleFunc("/api/inventory/{id}", hapusInventaris).Methods("DELETE")
+
+	log.Println("Server berjalan di http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", r))
 }

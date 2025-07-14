@@ -4,14 +4,14 @@ import {
   List, ListItem, ListItemText, Divider, Chip, Button, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Stepper, Step, StepLabel,
   Snackbar, Alert, TextField, Grid, Tooltip,
-  Paper, // Make sure Paper is imported here
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow // Import Table components
+  Paper,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow
 } from '@mui/material';
 import {
   Add, CheckCircle, Warning, Error, Visibility, Delete,
   KeyboardArrowLeft, KeyboardArrowRight, Inventory2, Group, Build
 } from '@mui/icons-material';
-import { format } from 'date-fns'; // For date formatting
+import { format } from 'date-fns';
 
 const initialProductionData = [
   {
@@ -21,10 +21,14 @@ const initialProductionData = [
     completed: 82,
     status: "Dalam Proses",
     startDate: "2023-11-01",
-    endDate: "2024-07-30", // Date updated to be more relevant to current time
-    workItems: ["Assembly Komponen Elektronik", "Testing Fungsional", "Quality Check Akhir", "Pengepakan"],
+    endDate: "2024-07-30",
     personnel: ["Tim Produksi"],
-    materials: ["Modul RF", "Casing Polimer", "Kabel Koaksial", "Antena"],
+    materials: [
+      { name: "Modul RF", qty: 100, harga: 50000, satuan: "unit" },
+      { name: "Casing Polimer", qty: 100, harga: 20000, satuan: "unit" },
+      { name: "Kabel Koaksial", qty: 200, harga: 5000, satuan: "meter" },
+      { name: "Antena", qty: 100, harga: 15000, satuan: "unit" }
+    ],
     progress: [
       { date: "2024-07-01", completed: 20, notes: "Assembly 20% selesai" },
       { date: "2024-07-10", completed: 50, notes: "Testing dimulai, 30 unit lolos" },
@@ -38,10 +42,14 @@ const initialProductionData = [
     completed: 45,
     status: "Dalam Proses",
     startDate: "2024-06-15",
-    endDate: "2024-07-28", // Date updated
-    workItems: ["Instalasi Perangkat Keras", "Konfigurasi Sistem Jaringan", "Integrasi Software", "Uji Coba Lapangan"],
+    endDate: "2024-07-28",
     personnel: ["Tim Produksi"],
-    materials: ["Unit CPU Industri", "Router Jaringan", "Kabel Fiber Optik", "Sensor Lingkungan"],
+    materials: [
+      { name: "Unit CPU Industri", qty: 50, harga: 500000, satuan: "unit" },
+      { name: "Router Jaringan", qty: 50, harga: 100000, satuan: "unit" },
+      { name: "Kabel Fiber Optik", qty: 500, harga: 10000, satuan: "meter" },
+      { name: "Sensor Lingkungan", qty: 50, harga: 30000, satuan: "unit" }
+    ],
     progress: [
       { date: "2024-06-25", completed: 30, notes: "Instalasi perangkat keras selesai" },
       { date: "2024-07-05", completed: 45, notes: "Konfigurasi sistem 50% rampung" }
@@ -55,25 +63,32 @@ const initialProductionData = [
     status: "Selesai",
     startDate: "2024-01-01",
     endDate: "2024-03-31",
-    workItems: ["Desain Sistem", "Manufaktur Komponen", "Instalasi Lapangan", "Sertifikasi"],
     personnel: ["Tim Produksi"],
-    materials: ["Mikrokontroler", "Transistor Daya", "Relai Solid State"],
+    materials: [
+      { name: "Mikrokontroler", qty: 5, harga: 100000, satuan: "unit" },
+      { name: "Transistor Daya", qty: 10, harga: 5000, satuan: "buah" },
+      { name: "Relai Solid State", qty: 5, harga: 20000, satuan: "unit" }
+    ],
     progress: [
       { date: "2024-02-01", completed: 50, notes: "Desain dan Manufaktur selesai" },
       { date: "2024-03-31", completed: 100, notes: "Proyek selesai dan disertifikasi" }
     ]
   },
   {
-    id: "PRD-002",
-    name: "Way Station KRL",
+    id: "PRD-004",
+    name: "Way Station KRL Upgrade",
     target: 50,
     completed: 45,
     status: "Dalam Proses",
     startDate: "2024-06-15",
-    endDate: "2024-07-28", // Date updated
-    workItems: ["Instalasi Perangkat Keras", "Konfigurasi Sistem Jaringan", "Integrasi Software", "Uji Coba Lapangan"],
+    endDate: "2024-07-28",
     personnel: ["Tim Produksi"],
-    materials: ["Unit CPU Industri", "Router Jaringan", "Kabel Fiber Optik", "Sensor Lingkungan"],
+    materials: [
+      { name: "Unit CPU Industri", qty: 50, harga: 500000, satuan: "unit" },
+      { name: "Router Jaringan", qty: 50, harga: 100000, satuan: "unit" },
+      { name: "Kabel Fiber Optik", qty: 500, harga: 10000, satuan: "meter" },
+      { name: "Sensor Lingkungan", qty: 50, harga: 30000, satuan: "unit" }
+    ],
     progress: [
       { date: "2024-06-25", completed: 30, notes: "Instalasi perangkat keras selesai" },
       { date: "2024-07-05", completed: 45, notes: "Konfigurasi sistem 50% rampung" }
@@ -83,7 +98,6 @@ const initialProductionData = [
 
 const steps = [
   "Informasi Umum",
-  "Item Pekerjaan",
   "Personel",
   "Material",
   "Konfirmasi"
@@ -95,21 +109,21 @@ export default function Produksi() {
   const [activeStep, setActiveStep] = useState(0);
   const [newProduction, setNewProduction] = useState({
     name: "",
-    target: "", // Change to string for TextField
+    target: "",
     startDate: format(new Date(), 'yyyy-MM-dd'),
     endDate: "",
-    workItems: [],
     personnel: [],
     materials: [],
-    currentWorkItem: "",
     currentPersonnel: "",
-    currentMaterial: ""
+    currentMaterialName: "",
+    currentMaterialQty: "",
+    currentMaterialHarga: "",
+    currentMaterialSatuan: ""
   });
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedProduction, setSelectedProduction] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
-  // Summary data for cards
   const totalProductions = productionData.length;
   const inProgressProductions = productionData.filter(p => p.status === "Dalam Proses").length;
   const completedProductions = productionData.filter(p => p.status === "Selesai").length;
@@ -131,6 +145,28 @@ export default function Produksi() {
     }
   };
 
+  const handleAddMaterial = () => {
+    const { currentMaterialName, currentMaterialQty, currentMaterialHarga, currentMaterialSatuan } = newProduction;
+    if (currentMaterialName.trim() && currentMaterialQty !== "" && currentMaterialHarga !== "" && currentMaterialSatuan.trim()) {
+      const newMaterial = {
+        name: currentMaterialName.trim(),
+        qty: parseInt(currentMaterialQty),
+        harga: parseFloat(currentMaterialHarga),
+        satuan: currentMaterialSatuan.trim()
+      };
+      setNewProduction(prev => ({
+        ...prev,
+        materials: [...prev.materials, newMaterial],
+        currentMaterialName: "",
+        currentMaterialQty: "",
+        currentMaterialHarga: "",
+        currentMaterialSatuan: ""
+      }));
+    } else {
+      setSnackbar({ open: true, message: "Harap lengkapi semua detail material!", severity: "error" });
+    }
+  };
+
   const handleRemoveItem = (listName, index) => {
     setNewProduction(prev => ({
       ...prev,
@@ -139,7 +175,6 @@ export default function Produksi() {
   };
 
   const handleNext = () => {
-    // Basic validation for each step
     switch (activeStep) {
       case 0: // General Information
         if (!newProduction.name || newProduction.target === "" || !newProduction.startDate || !newProduction.endDate) {
@@ -155,19 +190,13 @@ export default function Produksi() {
           return;
         }
         break;
-      case 1: // Work Items
-        if (newProduction.workItems.length === 0) {
-          setSnackbar({ open: true, message: "Harap tambahkan setidaknya satu item pekerjaan.", severity: "error" });
-          return;
-        }
-        break;
-      case 2: // Personnel
+      case 1: // Personnel (formerly case 2)
         if (newProduction.personnel.length === 0) {
           setSnackbar({ open: true, message: "Harap tambahkan setidaknya satu personel.", severity: "error" });
           return;
         }
         break;
-      case 3: // Material
+      case 2: // Material (formerly case 3)
         if (newProduction.materials.length === 0) {
           setSnackbar({ open: true, message: "Harap tambahkan setidaknya satu material.", severity: "error" });
           return;
@@ -190,7 +219,6 @@ export default function Produksi() {
       status: "Dalam Proses",
       startDate: newProduction.startDate,
       endDate: newProduction.endDate,
-      workItems: newProduction.workItems,
       personnel: newProduction.personnel,
       materials: newProduction.materials,
       progress: []
@@ -200,8 +228,9 @@ export default function Produksi() {
     setActiveStep(0);
     setNewProduction({
       name: "", target: "", startDate: format(new Date(), 'yyyy-MM-dd'),
-      endDate: "", workItems: [], personnel: [], materials: [],
-      currentWorkItem: "", currentPersonnel: "", currentMaterial: ""
+      endDate: "", personnel: [], materials: [],
+      currentPersonnel: "",
+      currentMaterialName: "", currentMaterialQty: "", currentMaterialHarga: "", currentMaterialSatuan: ""
     });
     setSnackbar({ open: true, message: "Produksi berhasil ditambahkan!", severity: "success" });
   };
@@ -209,7 +238,7 @@ export default function Produksi() {
   const getStatusInfo = (status) => {
     if (status === "Selesai") return { color: "success", icon: <CheckCircle fontSize="small" /> };
     if (status === "Dalam Proses") return { color: "warning", icon: <Warning fontSize="small" /> };
-    return { color: "error", icon: <Error fontSize="small" /> }; // E.g., for "Pending" or "Canceled" status
+    return { color: "error", icon: <Error fontSize="small" /> };
   };
 
   const handleOpenDetail = (item) => {
@@ -275,43 +304,7 @@ export default function Produksi() {
             </Grid>
           </Grid>
         );
-      case 1:
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>Item Pekerjaan</Typography>
-            <Box display="flex" gap={1} mb={2}>
-              <TextField
-                sx={{ flexGrow: 1 }}
-                label="Tambahkan Item Pekerjaan"
-                value={newProduction.currentWorkItem}
-                onChange={(e) => setNewProduction({ ...newProduction, currentWorkItem: e.target.value })}
-                onKeyPress={(e) => e.key === 'Enter' && handleAddItem("workItems", "currentWorkItem")}
-              />
-              <Button variant="contained" onClick={() => handleAddItem("workItems", "currentWorkItem")} startIcon={<Add />}>
-                Tambah
-              </Button>
-            </Box>
-            <List dense>
-              {newProduction.workItems.length === 0 ? (
-                <Typography color="text.secondary">Belum ada item pekerjaan ditambahkan.</Typography>
-              ) : (
-                newProduction.workItems.map((w, i) => (
-                  <ListItem
-                    key={i}
-                    secondaryAction={
-                      <IconButton edge="end" onClick={() => handleRemoveItem("workItems", i)}>
-                        <Delete />
-                      </IconButton>
-                    }
-                  >
-                    <ListItemText primary={w} />
-                  </ListItem>
-                ))
-              )}
-            </List>
-          </Box>
-        );
-      case 2:
+      case 1: // This was case 2 (Personel)
         return (
           <Box>
             <Typography variant="h6" gutterBottom>Personel Terlibat</Typography>
@@ -347,22 +340,53 @@ export default function Produksi() {
             </List>
           </Box>
         );
-      case 3:
+      case 2: // This was case 3 (Material)
         return (
           <Box>
             <Typography variant="h6" gutterBottom>Material Digunakan</Typography>
-            <Box display="flex" gap={1} mb={2}>
-              <TextField
-                sx={{ flexGrow: 1 }}
-                label="Tambahkan Material"
-                value={newProduction.currentMaterial}
-                onChange={(e) => setNewProduction({ ...newProduction, currentMaterial: e.target.value })}
-                onKeyPress={(e) => e.key === 'Enter' && handleAddItem("materials", "currentMaterial")}
-              />
-              <Button variant="contained" onClick={() => handleAddItem("materials", "currentMaterial")} startIcon={<Add />}>
-                Tambah
-              </Button>
-            </Box>
+            <Grid container spacing={2} alignItems="center" mb={2}>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Nama Material"
+                  value={newProduction.currentMaterialName}
+                  onChange={(e) => setNewProduction({ ...newProduction, currentMaterialName: e.target.value })}
+                />
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <TextField
+                  fullWidth
+                  label="Quantity"
+                  type="number"
+                  value={newProduction.currentMaterialQty}
+                  onChange={(e) => setNewProduction({ ...newProduction, currentMaterialQty: e.target.value })}
+                  inputProps={{ min: 1 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  fullWidth
+                  label="Harga"
+                  type="number"
+                  value={newProduction.currentMaterialHarga}
+                  onChange={(e) => setNewProduction({ ...newProduction, currentMaterialHarga: e.target.value })}
+                  inputProps={{ min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  fullWidth
+                  label="Satuan"
+                  value={newProduction.currentMaterialSatuan}
+                  onChange={(e) => setNewProduction({ ...newProduction, currentMaterialSatuan: e.target.value })}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Button variant="contained" onClick={handleAddMaterial} startIcon={<Add />}>
+                  Tambah Material
+                </Button>
+              </Grid>
+            </Grid>
             <List dense>
               {newProduction.materials.length === 0 ? (
                 <Typography color="text.secondary">Belum ada material ditambahkan.</Typography>
@@ -376,14 +400,14 @@ export default function Produksi() {
                       </IconButton>
                     }
                   >
-                    <ListItemText primary={m} />
+                    <ListItemText primary={`${m.name} (${m.qty} ${m.satuan} @ Rp${m.harga})`} />
                   </ListItem>
                 ))
               )}
             </List>
           </Box>
         );
-      case 4:
+      case 3: // This was case 4 (Konfirmasi)
         return (
           <Box>
             <Typography variant="h6" gutterBottom>Konfirmasi Data Produksi</Typography>
@@ -398,12 +422,6 @@ export default function Produksi() {
                 <Typography variant="body1"><strong>Periode:</strong> {format(new Date(newProduction.startDate), 'dd MMM yyyy')} - {format(new Date(newProduction.endDate), 'dd MMM yyyy')}</Typography>
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="body1"><strong>Item Pekerjaan:</strong></Typography>
-                <List dense>
-                  {newProduction.workItems.length > 0 ? newProduction.workItems.map((item, idx) => <ListItemText key={idx} primary={`- ${item}`} />) : <ListItemText primary="- Tidak ada" />}
-                </List>
-              </Grid>
-              <Grid item xs={12}>
                 <Typography variant="body1"><strong>Personel:</strong></Typography>
                 <List dense>
                   {newProduction.personnel.length > 0 ? newProduction.personnel.map((item, idx) => <ListItemText key={idx} primary={`- ${item}`} />) : <ListItemText primary="- Tidak ada" />}
@@ -412,7 +430,7 @@ export default function Produksi() {
               <Grid item xs={12}>
                 <Typography variant="body1"><strong>Material:</strong></Typography>
                 <List dense>
-                  {newProduction.materials.length > 0 ? newProduction.materials.map((item, idx) => <ListItemText key={idx} primary={`- ${item}`} />) : <ListItemText primary="- Tidak ada" />}
+                  {newProduction.materials.length > 0 ? newProduction.materials.map((item, idx) => <ListItemText key={idx} primary={`- ${item.name} (${item.qty} ${item.satuan} @ Rp${item.harga})`} />) : <ListItemText primary="- Tidak ada" />}
                 </List>
               </Grid>
             </Grid>
@@ -434,7 +452,7 @@ export default function Produksi() {
       {/* Summary Dashboard */}
       <Grid container spacing={3} mb={4}>
         <Grid item xs={12} sm={6} md={4}>
-          <Card elevation={3} sx={{ backgroundColor: '#e3f2fd' }}>
+          <Card elevation={3}>
             <CardContent>
               <Box display="flex" alignItems="center" mb={1}>
                 <Inventory2 color="primary" sx={{ mr: 1 }} />
@@ -445,7 +463,7 @@ export default function Produksi() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
-          <Card elevation={3} sx={{ backgroundColor: '#fff3e0' }}>
+          <Card elevation={3}>
             <CardContent>
               <Box display="flex" alignItems="center" mb={1}>
                 <Warning color="warning" sx={{ mr: 1 }} />
@@ -456,7 +474,7 @@ export default function Produksi() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
-          <Card elevation={3} sx={{ backgroundColor: '#e8f5e9' }}>
+          <Card elevation={3}>
             <CardContent>
               <Box display="flex" alignItems="center" mb={1}>
                 <CheckCircle color="success" sx={{ mr: 1 }} />
@@ -475,7 +493,6 @@ export default function Produksi() {
         <Button
           variant="contained"
           startIcon={<Add />}
-          sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
           onClick={() => setOpenAddDialog(true)}
         >
           Buat Produksi Baru
@@ -494,7 +511,7 @@ export default function Produksi() {
               <TableCell>Progress</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Periode</TableCell>
-              <TableCell>Personel</TableCell> {/* Added Personnel column */}
+              <TableCell>Personel</TableCell>
               <TableCell align="center">Aksi</TableCell>
             </TableRow>
           </TableHead>
@@ -532,7 +549,6 @@ export default function Produksi() {
                             sx={{
                               height: 8,
                               borderRadius: 5,
-                              backgroundColor: '#e0e0e0',
                               '& .MuiLinearProgress-bar': {
                                 backgroundColor: isCompleted ? '#4caf50' : '#2196f3',
                               },
@@ -594,7 +610,6 @@ export default function Produksi() {
             variant="contained"
             onClick={activeStep === steps.length - 1 ? handleSaveProduction : handleNext}
             endIcon={activeStep === steps.length - 1 ? <CheckCircle /> : <KeyboardArrowRight />}
-            sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
           >
             {activeStep === steps.length - 1 ? 'Selesai & Simpan' : 'Lanjut'}
           </Button>
@@ -614,20 +629,6 @@ export default function Produksi() {
                   <ListItem><ListItemText primary={`Selesai: ${selectedProduction.completed} unit`}/></ListItem>
                   <ListItem><ListItemText primary={`Status: ${selectedProduction.status}`} /></ListItem>
                   <ListItem><ListItemText primary={`Periode: ${format(new Date(selectedProduction.startDate), 'dd MMM yyyy')} - ${format(new Date(selectedProduction.endDate), 'dd MMM yyyy')}`} /></ListItem>
-                </List>
-                <Typography variant="h6" gutterBottom mt={2}>
-                  <Build sx={{ verticalAlign: 'middle', mr: 1 }} />Item Pekerjaan
-                </Typography>
-                <List dense>
-                  {selectedProduction.workItems.length > 0 ? (
-                    selectedProduction.workItems.map((item, index) => (
-                      <ListItem key={index}>
-                        <ListItemText primary={`- ${item}`} />
-                      </ListItem>
-                    ))
-                  ) : (
-                    <ListItem><ListItemText primary="Tidak ada item pekerjaan." /></ListItem>
-                  )}
                 </List>
               </Grid>
               <Grid item xs={12} md={6}>
@@ -652,7 +653,7 @@ export default function Produksi() {
                   {selectedProduction.materials.length > 0 ? (
                     selectedProduction.materials.map((m, index) => (
                       <ListItem key={index}>
-                        <ListItemText primary={`- ${m}`} />
+                        <ListItemText primary={`${m.name} (${m.qty} ${m.satuan} @ Rp${m.harga})`} />
                       </ListItem>
                     ))
                   ) : (

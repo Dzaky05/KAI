@@ -21,12 +21,12 @@ export default function Inventory() {
   const theme = useTheme();
 
   const [inventoryData, setInventoryData] = useState([
-    { id: 1, name: "Rel Kereta", quantity: 150, location: "Gudang A", status: "Tersedia", itemCode: "INV-GDA-0001" },
-    { id: 2, name: "Baut Khusus", quantity: 1200, location: "Gudang B", status: "Tersedia", itemCode: "INV-GDB-0002" },
+    { id: 1, name: "Rel Kereta", quantity: 50, location: "Gudang A", status: "Tersedia", itemCode: "INV-GDA-0001" },
+    { id: 2, name: "Radio Lokomotif ", quantity: 6, location: "Gudang B", status: "Tersedia", itemCode: "INV-GDB-0002" },
     { id: 3, name: "Panel Kontrol", quantity: 25, location: "Gudang C", status: "Limit", itemCode: "INV-GDC-0003" },
-    { id: 4, name: "Kabel Serat Optik", quantity: 500, location: "Gudang A", status: "Diproduksi", itemCode: "INV-GDA-0004" },
-    { id: 5, name: "Bantalan Beton", quantity: 300, location: "Gudang D", status: "Overhaul", itemCode: "INV-GDD-0005" },
-    { id: 6, name: "Komponen Rem", quantity: 75, location: "Gudang E", status: "Rekayasa", itemCode: "INV-GDE-0006" },
+    { id: 4, name: "Kabel Serat Optik", quantity: 50, location: "Gudang A", status: "Diproduksi", itemCode: "INV-GDA-0004" },
+    { id: 5, name: "Bantalan Beton", quantity: 25, location: "Gudang D", status: "Perbaikan", itemCode: "INV-GDD-0005" },
+    { id: 6, name: "Komponen Rem", quantity: 7, location: "Gudang E", status: "Limit", itemCode: "INV-GDE-0006" },
     { id: 7, name: "Sistem Persinyalan", quantity: 10, location: "Gudang F", status: "Perbaikan", itemCode: "INV-GDF-0007" },
   ]);
   const [search, setSearch] = useState('');
@@ -107,7 +107,7 @@ export default function Inventory() {
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(inventoryData.map(item => ({
       ID: item.id,
-      "Nama Item": item.name,
+      "Nama Barang": item.name,
       "Kuantitas": item.quantity,
       "Lokasi": item.location,
       "Status": item.status,
@@ -128,7 +128,7 @@ export default function Inventory() {
 
     autoTable(doc, {
       startY: 30,
-      head: [['ID', 'Nama Item', 'Kuantitas', 'Lokasi', 'Status', 'Kode Item']],
+      head: [['ID', 'Nama Barang', 'Kuantitas', 'Lokasi', 'Status', 'Kode Item']],
       body: inventoryData.map(i => [
         i.id, i.name, i.quantity, i.location, i.status, i.itemCode
       ]),
@@ -155,11 +155,16 @@ export default function Inventory() {
   const limitedItems = inventoryData.filter(item => item.status === 'Limit').length;
   const unavailableItems = inventoryData.filter(item => item.status === 'Tidak Tersedia').length;
   const producedItems = inventoryData.filter(item => item.status === 'Diproduksi').length;
-  const overhaulItems = inventoryData.filter(item => item.status === 'Overhaul').length;
-  const engineeredItems = inventoryData.filter(item => item.status === 'Rekayasa').length;
+  const overhaulItems = inventoryData.filter(item => item.status === 'Overhaul').length; // Corrected: re-added definition
+  const engineeredItems = inventoryData.filter(item => item.status === 'Rekayasa').length; // Corrected: re-added definition
   const repairedItems = inventoryData.filter(item => item.status === 'Perbaikan').length;
 
   const totalQuantity = inventoryData.reduce((sum, item) => sum + item.quantity, 0);
+
+  // item dengan yang paling banyak kuantitasnya
+  const mostQuantityItem = inventoryData.reduce((prev, current) => {
+    return (prev.quantity > current.quantity) ? prev : current;
+  }, { name: 'N/A', quantity: 0 });
 
 
   return (
@@ -182,7 +187,7 @@ export default function Inventory() {
         <Grid item xs={12} sm={6} md={3}>
           <Card elevation={2}>
             <CardContent>
-              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Kuantitas Barang</Typography>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Jumlah Barang</Typography>
               <Typography variant="h5" component="div" fontWeight="bold">{totalQuantity}</Typography>
             </CardContent>
           </Card>
@@ -235,6 +240,17 @@ export default function Inventory() {
             </CardContent>
           </Card>
         </Grid>
+        {/* Card for Most Quantity Item */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Barang Paling Sering Dipakai</Typography>
+              <Typography variant="h5" component="div" fontWeight="bold">
+                {mostQuantityItem.name} ({mostQuantityItem.quantity})
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
 
       {/* Filter & Aksi */}
@@ -257,10 +273,10 @@ export default function Inventory() {
         <Table>
           <TableHead sx={{ bgcolor: '#f5f5f5' }}>
             <TableRow>
-              <TableCell sx={{ fontWeight: 'bold' }}>Nama Item</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Kode Item</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Nama Barang</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Kode Barang</TableCell>
               <TableCell sx={{ fontWeight: 'bold' }}>Kuantitas</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Lokasi</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>Lokasi Pengerjaan</TableCell>
               <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
               <TableCell align="center" sx={{ fontWeight: 'bold' }}>Aksi</TableCell>
             </TableRow>
@@ -292,19 +308,11 @@ export default function Inventory() {
               ))
             )}
             <TableRow>
-              <TableCell colSpan={5} align="right" sx={{ fontWeight: 'bold' }}>Total Keseluruhan Barang:</TableCell>
+              <TableCell colSpan={5} align="right" sx={{ fontWeight: 'bold' }}>Jumlah Barang :</TableCell>
               <TableCell align="left" sx={{ fontWeight: 'bold' }}>{totalQuantity}</TableCell>
             </TableRow>
             <TableRow>
               <TableCell colSpan={6} align="center">
-                <Button
-                  variant="contained"
-                  startIcon={<Add />}
-                  sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
-                  onClick={() => handleOpenDrawer()}
-                >
-                  Tambah Item
-                </Button>
               </TableCell>
             </TableRow>
           </TableBody>

@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import LinearProgress from '@mui/material/LinearProgress';
-import { Box, Typography, Card, CardContent, Grid, Stepper, Step, StepLabel, Button, Divider, Chip } from "@mui/material";
-import { Science as ScienceIcon, CheckCircle, Schedule, Error } from "@mui/icons-material";
+import {
+  Box, Typography, Card, CardContent, Grid, Stepper, Step, StepLabel,
+  Button, Divider, Chip, TextField, Dialog, DialogTitle, DialogContent, DialogActions
+} from "@mui/material";
+import {
+  Science as ScienceIcon, CheckCircle, Schedule, Error
+} from "@mui/icons-material";
 
 const steps = [
   'Penerimaan Alat',
@@ -13,13 +19,40 @@ const steps = [
 
 export default function Kalibrasi() {
   const [activeStep, setActiveStep] = React.useState(2);
-  
+
   const calibrationData = [
     { id: 1, name: "Multimeter Digital", status: "Dalam Proses", progress: 2, dueDate: "2023-12-15" },
     { id: 2, name: "Oscilloscope", status: "Selesai", progress: 5, dueDate: "2023-11-30" },
     { id: 3, name: "Signal Generator", status: "Belum Dimulai", progress: 0, dueDate: "2024-01-10" },
     { id: 4, name: "Power Supply", status: "Dalam Proses", progress: 3, dueDate: "2023-12-05" },
   ];
+
+  const [newTool, setNewTool] = useState({ name: '', dueDate: '' });
+  const [openDialog, setOpenDialog] = useState(false);
+
+  const handleAddTool = () => {
+    if (!newTool.name || !newTool.dueDate) {
+      alert("Nama dan Tanggal wajib diisi!");
+      return;
+    }
+
+    axios.post("http://localhost:8080/api/calibration", {
+      name: newTool.name,
+      status: "Belum Dimulai",
+      progress: 0,
+      dueDate: newTool.dueDate
+    })
+      .then(res => {
+        alert("Alat berhasil ditambahkan");
+        setOpenDialog(false);
+        setNewTool({ name: '', dueDate: '' });
+        // Optional: refresh data dari backend
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Gagal menambahkan alat");
+      });
+  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -62,10 +95,14 @@ export default function Kalibrasi() {
                         </Typography>
                         <Chip
                           label={item.status}
-                          icon={item.status === "Selesai" ? <CheckCircle /> :
-                                item.status === "Dalam Proses" ? <Schedule /> : <Error />}
-                          color={item.status === "Selesai" ? "success" :
-                                 item.status === "Dalam Proses" ? "warning" : "error"}
+                          icon={
+                            item.status === "Selesai" ? <CheckCircle /> :
+                              item.status === "Dalam Proses" ? <Schedule /> : <Error />
+                          }
+                          color={
+                            item.status === "Selesai" ? "success" :
+                              item.status === "Dalam Proses" ? "warning" : "error"
+                          }
                           variant="outlined"
                         />
                       </Box>
@@ -92,6 +129,7 @@ export default function Kalibrasi() {
             </CardContent>
           </Card>
         </Grid>
+
         <Grid item xs={12} md={4}>
           <Card sx={{ borderRadius: 2, mb: 3 }}>
             <CardContent>
@@ -134,6 +172,7 @@ export default function Kalibrasi() {
               </Grid>
             </CardContent>
           </Card>
+
           <Button
             variant="contained"
             fullWidth
@@ -144,11 +183,42 @@ export default function Kalibrasi() {
               py: 1.5,
               borderRadius: 2
             }}
+            onClick={() => setOpenDialog(true)}
           >
             Tambah Alat Baru
           </Button>
         </Grid>
       </Grid>
+
+      {/* Dialog Tambah Alat */}
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Tambah Alat Kalibrasi</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Nama Alat"
+            fullWidth
+            value={newTool.name}
+            onChange={(e) => setNewTool({ ...newTool, name: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Tanggal Target Selesai"
+            type="date"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            value={newTool.dueDate}
+            onChange={(e) => setNewTool({ ...newTool, dueDate: e.target.value })}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDialog(false)}>Batal</Button>
+          <Button variant="contained" onClick={handleAddTool} sx={{ bgcolor: '#9C27B0' }}>
+            Simpan
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

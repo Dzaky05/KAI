@@ -1,14 +1,29 @@
-package main
+package stockproduction
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 )
+
+var db *sql.DB
+
+func connectDB() {
+	var err error
+	db, err = sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/kai_balai_yasa")
+	if err != nil {
+		log.Fatal("Database connection error:", err)
+	}
+	if err = db.Ping(); err != nil {
+		log.Fatal("Database not responding:", err)
+	}
+}
 
 type StockItem struct {
 	ID          int    `json:"id"`
@@ -22,82 +37,119 @@ type StockItem struct {
 	LastUpdated string `json:"lastUpdated"`
 }
 
-var stockData []StockItem
-var currentID = 6
-
 func main() {
+	connectDB()
 	r := mux.NewRouter()
 
-	// Routes
 	r.HandleFunc("/api/stock", GetAllStock).Methods("GET")
 	r.HandleFunc("/api/stock/{id}", GetStockByID).Methods("GET")
 	r.HandleFunc("/api/stock", CreateStock).Methods("POST")
 	r.HandleFunc("/api/stock/{id}", UpdateStock).Methods("PUT")
 	r.HandleFunc("/api/stock/{id}", DeleteStock).Methods("DELETE")
 
-	log.Println("Server started at :8080")
-	http.ListenAndServe(":8080", r)
+	log.Println("Server running at http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
+// ======================== HANDLERS ========================
+
 func GetAllStock(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT id, name, code, quantity, min_stock, location, category, unit, last_updated FROM stock_production")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+
+	var items []StockItem
+	for rows.Next() {
+		var s StockItem
+		var lastUpdated time.Time
+		if err := rows.Scan(&s.ID, &s.Name, &s.Code, &s.Quantity, &s.MinStock, &s.Location, &s.Category, &s.Unit, &lastUpdated); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		s.LastUpdated = lastUpdated.Format("2006-01-02 15:04:05")
+		items = append(items, s)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stockData)
+	json.NewEncoder(w).Encode(items)
 }
 
 func GetStockByID(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	params := mux.Vars(r)
-	id, _ := strconv.Atoi(params["id"])
+	id := mux.Vars(r)["id"]
+	var s StockItem
+	var lastUpdated time.Time
 
-	for _, item := range stockData {
-		if item.ID == id {
-			json.NewEncoder(w).Encode(item)
-			return
-		}
+	err := db.QueryRow("SELECT id, name, code, quantity, min_stock, location, category, unit, last_updated FROM stock_production WHERE id = ?", id).
+		Scan(&s.ID, &s.Name, &s.Code, &s.Quantity, &s.MinStock, &s.Location, &s.Category, &s.Unit, &lastUpdated)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Item not found", 404)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
 	}
-	http.NotFound(w, r)
+	s.LastUpdated = lastUpdated.Format("2006-01-02 15:04:05")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s)
 }
 
 func CreateStock(w http.ResponseWriter, r *http.Request) {
-	var newItem StockItem
-	json.NewDecoder(r.Body).Decode(&newItem)
+	var s StockItem
+	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
 
-	currentID++
-	newItem.ID = currentID
-	newItem.LastUpdated = time.Now().Format("2006-01-02")
-	stockData = append(stockData, newItem)
+	now := time.Now()
+	result, err := db.Exec("INSERT INTO stock_production (name, code, quantity, min_stock, location, category, unit, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		s.Name, s.Code, s.Quantity, s.MinStock, s.Location, s.Category, s.Unit, now)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	insertID, _ := result.LastInsertId()
+	s.ID = int(insertID)
+	s.LastUpdated = now.Format("2006-01-02 15:04:05")
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(newItem)
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(s)
 }
 
 func UpdateStock(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id, _ := strconv.Atoi(params["id"])
-
-	for i, item := range stockData {
-		if item.ID == id {
-			json.NewDecoder(r.Body).Decode(&stockData[i])
-			stockData[i].ID = id
-			stockData[i].LastUpdated = time.Now().Format("2006-01-02")
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(stockData[i])
-			return
-		}
+	id := mux.Vars(r)["id"]
+	var s StockItem
+	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
 	}
-	http.NotFound(w, r)
+
+	now := time.Now()
+	_, err := db.Exec("UPDATE stock_production SET name=?, code=?, quantity=?, min_stock=?, location=?, category=?, unit=?, last_updated=? WHERE id=?",
+		s.Name, s.Code, s.Quantity, s.MinStock, s.Location, s.Category, s.Unit, now, id)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	s.ID, _ = strconv.Atoi(id)
+	s.LastUpdated = now.Format("2006-01-02 15:04:05")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s)
 }
 
 func DeleteStock(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id, _ := strconv.Atoi(params["id"])
-
-	for i, item := range stockData {
-		if item.ID == id {
-			stockData = append(stockData[:i], stockData[i+1:]...)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	id := mux.Vars(r)["id"]
+	result, err := db.Exec("DELETE FROM stock_production WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
 	}
-	http.NotFound(w, r)
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "Item not found", 404)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

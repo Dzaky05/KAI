@@ -72,8 +72,8 @@ const progressData = [
 const activityData = [
   {
     id: 1,
-    title: "Product Tertinggi: Personalis",
-    description: "Notebook 90% dengan performitoritas.",
+    title: "Barang Baru Diterima",
+    description: "Kondisi barang baik, siap untuk diproses.",
     timestamp: "2 Jam lalu",
     type: "update",
     icon: <CheckCircleIcon color="success" />,
@@ -81,15 +81,15 @@ const activityData = [
   {
     id: 2,
     title: "Perbaikan Mesin A",
-    description: "Membutuhkan penggantian komponen utama.",
+    description: "Membutuhkan penggantian komponen.",
     timestamp: "4 Jam lalu",
     type: "warning",
     icon: <WarningIcon color="warning" />,
   },
   {
     id: 3,
-    title: "Inspeksi Kualitas",
-    description: "Laporan inspeksi bulan ini telah selesai.",
+    title: "Inspeksi Kualitas OverhauL Point Machine ",
+    description: "Laporan bulan ini telah selesai.",
     timestamp: "1 Jam lalu",
     type: "info",
     icon: <InfoIcon color="info" />,
@@ -104,9 +104,9 @@ const activityData = [
   },
   {
     id: 5,
-    title: "Penambahan Stok Baut",
-    description: "500 unit baut baru telah ditambahkan ke inventori.",
-    timestamp: "1 Minggu lalu",
+    title: "Penambahan Stok Radio Lokomotif",
+    description: "5 unit baru telah ditambahkan ke inventori.",
+    timestamp: "1 Hari lalu",
     type: "update",
     icon: <StorageIcon color="action" />,
   },
@@ -290,10 +290,10 @@ export default function Dashboard() {
   });
 
   const topPerformer = {
-    name: "Mochammad N",
+    name: "Budi Santono",
     role: "Manajer Produksi",
-    avatar: "/path/to/avatar.jpg", // Replace with actual avatar path
-    achievements: "Meningkatkan efisiensi lini produksi sebesar 15%",
+    avatar: "/path/to/avatar.jpg", 
+    achievements: "Memperbaiki Overhaul Point Machine",
     score: 4.8,
   };
 

@@ -6,263 +6,83 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 )
 
-// SingleMaterial represents a single material item
-type SingleMaterial struct {
-	ID           int       `json:"id"`
-	JenisBarang  string    `json:"jenisBarang"`
-	NamaMaterial string    `json:"namaMaterial"`
-	Jumlah       int       `json:"jumlah"`
-	Personil     string    `json:"personil"`
-	CreatedAt    time.Time `json:"created_at"`
+type Production struct {
+	ID        int            `json:"id"`
+	Name      string         `json:"name"`
+	Target    int            `json:"target"`
+	Completed int            `json:"completed"`
+	Status    string         `json:"status"`
+	StartDate string         `json:"startDate"`
+	EndDate   string         `json:"endDate"`
+	Personnel []Personnel    `json:"personnel"`
+	Materials []Material     `json:"materials"`
+	Progress  []ProgressNote `json:"progress"`
 }
 
-// MaterialInput represents the input structure for materials
-type MaterialInput struct {
-	JenisBarang string           `json:"jenisBarang"`
-	Personil    string           `json:"personil"`
-	Material    []SingleMaterial `json:"material"`
+type Personnel struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
-// getEnv gets an environment variable or returns a fallback value
-func getEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
+type Material struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Qty    int    `json:"qty"`
+	Harga  int    `json:"harga"`
+	Satuan string `json:"satuan"`
 }
 
-// connectDB establishes a connection to the database
-func connectDB() (*sql.DB, error) {
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "3306")
-	dbUser := getEnv("DB_USER", "root")
-	dbPass := getEnv("DB_PASS", "")
-	dbName := getEnv("DB_NAME", "kai_db")
-
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", dbUser, dbPass, dbHost, dbPort, dbName)
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %v", err)
-	}
-
-	if err = db.Ping(); err != nil {
-		return nil, fmt.Errorf("database not responding: %v", err)
-	}
-
-	// Set connection pool settings
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
-
-	return db, nil
+type ProgressNote struct {
+	ID        int    `json:"id"`
+	Date      string `json:"date"`
+	Completed int    `json:"completed"`
+	Notes     string `json:"notes"`
 }
 
-// inputMaterial handles the input of new materials
-func inputMaterial(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-
-	var input MaterialInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
-		return
-	}
-
-	db, err := connectDB()
-	if err != nil {
-		log.Printf("Database connection error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("Transaction begin error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	for _, item := range input.Material {
-		query := `INSERT INTO material (jenis_barang, nama_material, jumlah, personil, created_at) VALUES (?, ?, ?, ?, ?)`
-		_, err := tx.Exec(query, input.JenisBarang, item.NamaMaterial, item.Jumlah, input.Personil, time.Now())
-		if err != nil {
-			tx.Rollback()
-			log.Printf("Insert error: %v", err)
-			http.Error(w, "Failed to save data", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("Transaction commit error: %v", err)
-		http.Error(w, "Failed to save data", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Data saved successfully"})
+// Request structs untuk input data
+type CreateProductionRequest struct {
+	Name      string `json:"name"`
+	Target    int    `json:"target"`
+	Status    string `json:"status"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+	Personnel []int  `json:"personnel"` // Array of personnel IDs
+	Materials []int  `json:"materials"` // Array of material IDs
 }
 
-// getMaterials retrieves all materials
-func getMaterials(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-
-	db, err := connectDB()
-	if err != nil {
-		log.Printf("Database connection error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	rows, err := db.Query(`SELECT id, jenis_barang, nama_material, jumlah, personil, created_at FROM material`)
-	if err != nil {
-		log.Printf("Query error: %v", err)
-		http.Error(w, "Failed to retrieve data", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var result []SingleMaterial
-	for rows.Next() {
-		var m SingleMaterial
-		if err := rows.Scan(&m.ID, &m.JenisBarang, &m.NamaMaterial, &m.Jumlah, &m.Personil, &m.CreatedAt); err != nil {
-			log.Printf("Data scan error: %v", err)
-			http.Error(w, "Failed to read data", http.StatusInternalServerError)
-			return
-		}
-		result = append(result, m)
-	}
-
-	if err := rows.Err(); err != nil {
-		log.Printf("Rows error: %v", err)
-		http.Error(w, "Failed to process data", http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(result)
+type UpdateProgressRequest struct {
+	Date      string `json:"date"`
+	Completed int    `json:"completed"`
+	Notes     string `json:"notes"`
 }
 
-// updateMaterial updates an existing material
-func updateMaterial(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
+var db *sql.DB
 
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
+func initDB() {
+	var err error
+	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa"
+	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
+		log.Fatal("Database connection failed:", err)
 	}
-
-	var input SingleMaterial
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
-		return
-	}
-
-	db, err := connectDB()
-	if err != nil {
-		log.Printf("Database connection error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	query := `UPDATE material SET jenis_barang=?, nama_material=?, jumlah=?, personil=? WHERE id=?`
-	result, err := db.Exec(query, input.JenisBarang, input.NamaMaterial, input.Jumlah, input.Personil, id)
-	if err != nil {
-		log.Printf("Update error: %v", err)
-		http.Error(w, "Failed to update data", http.StatusInternalServerError)
-		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Printf("Rows affected error: %v", err)
-		http.Error(w, "Failed to verify update", http.StatusInternalServerError)
-		return
-	}
-
-	if rowsAffected == 0 {
-		http.Error(w, "No record found with given ID", http.StatusNotFound)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]string{"message": "Data updated successfully"})
 }
 
-// deleteMaterial deletes a material
-func deleteMaterial(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
-	}
-
-	db, err := connectDB()
-	if err != nil {
-		log.Printf("Database connection error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	result, err := db.Exec("DELETE FROM material WHERE id = ?", id)
-	if err != nil {
-		log.Printf("Delete error: %v", err)
-		http.Error(w, "Failed to delete data", http.StatusInternalServerError)
-		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Printf("Rows affected error: %v", err)
-		http.Error(w, "Failed to verify deletion", http.StatusInternalServerError)
-		return
-	}
-
-	if rowsAffected == 0 {
-		http.Error(w, "No record found with given ID", http.StatusNotFound)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]string{"message": "Data deleted successfully"})
+// Enable CORS
+func enableCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
-// enableCORS enables Cross-Origin Resource Sharing
-func enableCORS(next http.Handler) http.Handler {
+func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
-
+		enableCORS(w)
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -271,23 +91,446 @@ func enableCORS(next http.Handler) http.Handler {
 	})
 }
 
+// GET all productions
+func getAllProductions(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	rows, err := db.Query("SELECT id, name, target, completed, status, start_date, end_date FROM produksi")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var productions []Production
+	for rows.Next() {
+		var p Production
+		err := rows.Scan(&p.ID, &p.Name, &p.Target, &p.Completed, &p.Status, &p.StartDate, &p.EndDate)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		p.Personnel = getPersonnelByProductionID(p.ID)
+		p.Materials = getMaterialsByProductionID(p.ID)
+		p.Progress = getProgressByProductionID(p.ID)
+		productions = append(productions, p)
+	}
+
+	json.NewEncoder(w).Encode(productions)
+}
+
+// GET single production by ID
+func getProductionByID(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid production ID", http.StatusBadRequest)
+		return
+	}
+
+	var p Production
+	err = db.QueryRow("SELECT id, name, target, completed, status, start_date, end_date FROM produksi WHERE id = ?", id).
+		Scan(&p.ID, &p.Name, &p.Target, &p.Completed, &p.Status, &p.StartDate, &p.EndDate)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Production not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	p.Personnel = getPersonnelByProductionID(p.ID)
+	p.Materials = getMaterialsByProductionID(p.ID)
+	p.Progress = getProgressByProductionID(p.ID)
+
+	json.NewEncoder(w).Encode(p)
+}
+
+// POST create new production
+func createProduction(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	var req CreateProductionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Insert production
+	result, err := tx.Exec(`INSERT INTO produksi (name, target, completed, status, start_date, end_date) 
+		VALUES (?, ?, 0, ?, ?, ?)`, req.Name, req.Target, req.Status, req.StartDate, req.EndDate)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	prodID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Insert personnel assignments
+	for _, personnelID := range req.Personnel {
+		_, err := tx.Exec(`INSERT INTO produksi_team (produksi_id, personalia_id) VALUES (?, ?)`, prodID, personnelID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Insert material assignments
+	for _, materialID := range req.Materials {
+		_, err := tx.Exec(`INSERT INTO produksi_materials (produksi_id, material_id) VALUES (?, ?)`, prodID, materialID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return created production
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Production created successfully",
+		"id":      prodID,
+	})
+}
+
+// PUT update production
+func updateProduction(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid production ID", http.StatusBadRequest)
+		return
+	}
+
+	var req CreateProductionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Update production
+	_, err = tx.Exec(`UPDATE produksi SET name = ?, target = ?, status = ?, start_date = ?, end_date = ? WHERE id = ?`,
+		req.Name, req.Target, req.Status, req.StartDate, req.EndDate, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete existing personnel assignments
+	_, err = tx.Exec(`DELETE FROM produksi_team WHERE produksi_id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete existing material assignments
+	_, err = tx.Exec(`DELETE FROM produksi_materials WHERE produksi_id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Insert new personnel assignments
+	for _, personnelID := range req.Personnel {
+		_, err := tx.Exec(`INSERT INTO produksi_team (produksi_id, personalia_id) VALUES (?, ?)`, id, personnelID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Insert new material assignments
+	for _, materialID := range req.Materials {
+		_, err := tx.Exec(`INSERT INTO produksi_materials (produksi_id, material_id) VALUES (?, ?)`, id, materialID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"message": "Production updated successfully"})
+}
+
+// DELETE production
+func deleteProduction(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid production ID", http.StatusBadRequest)
+		return
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Delete related records first (foreign key constraints)
+	_, err = tx.Exec(`DELETE FROM progress WHERE produksi_id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = tx.Exec(`DELETE FROM produksi_team WHERE produksi_id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = tx.Exec(`DELETE FROM produksi_materials WHERE produksi_id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete production
+	_, err = tx.Exec(`DELETE FROM produksi WHERE id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"message": "Production deleted successfully"})
+}
+
+// POST add progress note
+func addProgressNote(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	prodID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid production ID", http.StatusBadRequest)
+		return
+	}
+
+	var req UpdateProgressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Insert progress note
+	_, err = tx.Exec(`INSERT INTO progress (produksi_id, date, completed, notes) VALUES (?, ?, ?, ?)`,
+		prodID, req.Date, req.Completed, req.Notes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update production completed value
+	_, err = tx.Exec(`UPDATE produksi SET completed = ? WHERE id = ?`, req.Completed, prodID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"message": "Progress note added successfully"})
+}
+
+// GET all personnel
+func getAllPersonnel(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	rows, err := db.Query("SELECT id, name FROM personalia")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var personnel []Personnel
+	for rows.Next() {
+		var p Personnel
+		err := rows.Scan(&p.ID, &p.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		personnel = append(personnel, p)
+	}
+
+	json.NewEncoder(w).Encode(personnel)
+}
+
+// GET all materials
+func getAllMaterials(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	w.Header().Set("Content-Type", "application/json")
+
+	rows, err := db.Query("SELECT id, name, qty, harga, satuan FROM materials")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var materials []Material
+	for rows.Next() {
+		var m Material
+		err := rows.Scan(&m.ID, &m.Name, &m.Qty, &m.Harga, &m.Satuan)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		materials = append(materials, m)
+	}
+
+	json.NewEncoder(w).Encode(materials)
+}
+
+func getPersonnelByProductionID(prodID int) []Personnel {
+	rows, err := db.Query(`SELECT p.id, p.name FROM personalia p JOIN produksi_team pt ON p.id = pt.personalia_id WHERE pt.produksi_id = ?`, prodID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var personnel []Personnel
+	for rows.Next() {
+		var p Personnel
+		rows.Scan(&p.ID, &p.Name)
+		personnel = append(personnel, p)
+	}
+	return personnel
+}
+
+func getMaterialsByProductionID(prodID int) []Material {
+	rows, err := db.Query(`SELECT m.id, m.name, m.qty, m.harga, m.satuan FROM materials m JOIN produksi_materials pm ON m.id = pm.material_id WHERE pm.produksi_id = ?`, prodID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var materials []Material
+	for rows.Next() {
+		var m Material
+		rows.Scan(&m.ID, &m.Name, &m.Qty, &m.Harga, &m.Satuan)
+		materials = append(materials, m)
+	}
+	return materials
+}
+
+func getProgressByProductionID(prodID int) []ProgressNote {
+	rows, err := db.Query(`SELECT id, date, completed, notes FROM progress WHERE produksi_id = ? ORDER BY date DESC`, prodID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var notes []ProgressNote
+	for rows.Next() {
+		var p ProgressNote
+		rows.Scan(&p.ID, &p.Date, &p.Completed, &p.Notes)
+		notes = append(notes, p)
+	}
+	return notes
+}
+
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/material/input", inputMaterial)   // POST
-	mux.HandleFunc("/api/material/get", getMaterials)      // GET
-	mux.HandleFunc("/api/material/update", updateMaterial) // PUT
-	mux.HandleFunc("/api/material/delete", deleteMaterial) // DELETE
+	initDB()
+	defer db.Close()
 
-	server := &http.Server{
-		Addr:         ":8080",
-		Handler:      enableCORS(mux),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+	r := mux.NewRouter()
 
-	log.Println("Server running on http://localhost:8080")
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Server error: %v", err)
-	}
+	// Use CORS middleware
+	r.Use(corsMiddleware)
+
+	// Production routes
+	r.HandleFunc("/api/produksi", getAllProductions).Methods("GET")
+	r.HandleFunc("/api/produksi/{id}", getProductionByID).Methods("GET")
+	r.HandleFunc("/api/produksi", createProduction).Methods("POST")
+	r.HandleFunc("/api/produksi/{id}", updateProduction).Methods("PUT")
+	r.HandleFunc("/api/produksi/{id}", deleteProduction).Methods("DELETE")
+
+	// Progress routes
+	r.HandleFunc("/api/produksi/{id}/progress", addProgressNote).Methods("POST")
+
+	// Master data routes
+	r.HandleFunc("/api/personalia", getAllPersonnel).Methods("GET")
+	r.HandleFunc("/api/materials", getAllMaterials).Methods("GET")
+
+	fmt.Println("Server running on :8080")
+	fmt.Println("Available endpoints:")
+	fmt.Println("GET    /api/produksi           - Get all productions")
+	fmt.Println("GET    /api/produksi/{id}      - Get production by ID")
+	fmt.Println("POST   /api/produksi           - Create new production")
+	fmt.Println("PUT    /api/produksi/{id}      - Update production")
+	fmt.Println("DELETE /api/produksi/{id}      - Delete production")
+	fmt.Println("POST   /api/produksi/{id}/progress - Add progress note")
+	fmt.Println("GET    /api/personalia         - Get all personnel")
+	fmt.Println("GET    /api/materials          - Get all materials")
+
+	log.Fatal(http.ListenAndServe(":8080", r))
 }

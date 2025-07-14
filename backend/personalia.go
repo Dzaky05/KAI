@@ -1,118 +1,139 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
-	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 )
 
-type Education struct {
-	ID         int    `json:"id"`
-	Degree     string `json:"degree"`
-	University string `json:"university"`
-	Year       string `json:"year"`
+type Personalia struct {
+	ID           int    `json:"id"`
+	NIP          string `json:"nip"`
+	Jabatan      string `json:"jabatan"`
+	Divisi       string `json:"divisi"`
+	Lokasi       string `json:"lokasi"`
+	Status       string `json:"status"`
+	JoinDate     string `json:"joinDate"`
+	PhoneNumber  string `json:"phoneNumber"`
+	UrgentNumber string `json:"urgentNumber"`
+	ProfileID    int    `json:"profile_id"`
 }
 
-type Experience struct {
-	ID       int    `json:"id"`
-	Position string `json:"position"`
-	Company  string `json:"company"`
-	Period   string `json:"period"`
-}
+var db *sql.DB
 
-type Profile struct {
-	Name       string       `json:"name"`
-	Position   string       `json:"position"`
-	Email      string       `json:"email"`
-	Phone      string       `json:"phone"`
-	Address    string       `json:"address"`
-	Bio        string       `json:"bio"`
-	Education  []Education  `json:"education"`
-	Experience []Experience `json:"experience"`
-}
-
-var (
-	profile = Profile{
-		Name:     "Asep Hidayat S.Kom M.Kom",
-		Position: "Production Manager",
-		Email:    "john.doe@kai.co.id",
-		Phone:    "+62 812-3456-7890",
-		Address:  "Jl. Kereta Api No. 1, Jakarta",
-		Bio:      "Professional with 10+ years experience in railway production management",
-		Education: []Education{
-			{ID: 1, Degree: "Bachelor of Engineering", University: "Institut Teknologi Bandung", Year: "2005-2009"},
-			{ID: 2, Degree: "Master of Business Administration", University: "Universitas Indonesia", Year: "2011-2013"},
-		},
-		Experience: []Experience{
-			{ID: 1, Position: "Production Supervisor", Company: "PT KAI", Period: "2010-2015"},
-			{ID: 2, Position: "Production Manager", Company: "PT KAI Balai Yasa", Period: "2015-Present"},
-		},
+func connectDB() {
+	var err error
+	dsn := "root:@tcp(127.0.0.1:3306)/kai_balai_yasa"
+	db, err = sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatal(err)
 	}
-	mutex sync.Mutex
-)
-
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if err = db.Ping(); err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Database connected!")
 }
 
-func getProfile(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
+func getPersonalia(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT personalia_id, nip, jabatan, divisi, lokasi, status, join_date, phone_number, urgent_number, profile_id FROM personalia")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	defer rows.Close()
+
+	var result []Personalia
+	for rows.Next() {
+		var p Personalia
+		err := rows.Scan(&p.ID, &p.NIP, &p.Jabatan, &p.Divisi, &p.Lokasi, &p.Status, &p.JoinDate, &p.PhoneNumber, &p.UrgentNumber, &p.ProfileID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result = append(result, p)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	mutex.Lock()
-	defer mutex.Unlock()
-	if err := json.NewEncoder(w).Encode(profile); err != nil {
-		http.Error(w, "Failed to encode profile", http.StatusInternalServerError)
-	}
+	json.NewEncoder(w).Encode(result)
 }
 
-func updateProfile(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
+func getPersonaliaByID(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var p Personalia
+	err := db.QueryRow("SELECT personalia_id, nip, jabatan, divisi, lokasi, status, join_date, phone_number, urgent_number, profile_id FROM personalia WHERE personalia_id = ?", id).
+		Scan(&p.ID, &p.NIP, &p.Jabatan, &p.Divisi, &p.Lokasi, &p.Status, &p.JoinDate, &p.PhoneNumber, &p.UrgentNumber, &p.ProfileID)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Data not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	mutex.Lock()
-	defer mutex.Unlock()
+	json.NewEncoder(w).Encode(p)
+}
 
-	var updatedProfile Profile
-	if err := json.NewDecoder(r.Body).Decode(&updatedProfile); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+func createPersonalia(w http.ResponseWriter, r *http.Request) {
+	var p Personalia
+	json.NewDecoder(r.Body).Decode(&p)
+
+	stmt, err := db.Prepare(`INSERT INTO personalia (nip, jabatan, divisi, lokasi, status, join_date, phone_number, urgent_number, profile_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	profile = updatedProfile
+	res, err := stmt.Exec(p.NIP, p.Jabatan, p.Divisi, p.Lokasi, p.Status, p.JoinDate, p.PhoneNumber, p.UrgentNumber, p.ProfileID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	id, _ := res.LastInsertId()
+	p.ID = int(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(p)
+}
 
+func updatePersonalia(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var p Personalia
+	json.NewDecoder(r.Body).Decode(&p)
+
+	_, err := db.Exec(`UPDATE personalia SET nip=?, jabatan=?, divisi=?, lokasi=?, status=?, join_date=?, phone_number=?, urgent_number=?, profile_id=? WHERE personalia_id=?`,
+		p.NIP, p.Jabatan, p.Divisi, p.Lokasi, p.Status, p.JoinDate, p.PhoneNumber, p.UrgentNumber, p.ProfileID, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(profile); err != nil {
-		http.Error(w, "Failed to encode updated profile", http.StatusInternalServerError)
+}
+
+func deletePersonalia(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	_, err := db.Exec("DELETE FROM personalia WHERE personalia_id = ?", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
-	http.HandleFunc("/profile", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			getProfile(w, r)
-		case http.MethodPut:
-			updateProfile(w, r)
-		case http.MethodOptions:
-			enableCORS(w)
-		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
+	connectDB()
+	r := mux.NewRouter()
 
-	log.Println("Personalia API running on http://localhost:8081")
-	if err := http.ListenAndServe(":8081", nil); err != nil {
-		log.Fatalf("Server failed: %v", err)
-	}
+	r.HandleFunc("/api/personalia", getPersonalia).Methods("GET")
+	r.HandleFunc("/api/personalia/{id}", getPersonaliaByID).Methods("GET")
+	r.HandleFunc("/api/personalia", createPersonalia).Methods("POST")
+	r.HandleFunc("/api/personalia/{id}", updatePersonalia).Methods("PUT")
+	r.HandleFunc("/api/personalia/{id}", deletePersonalia).Methods("DELETE")
+
+	log.Println("Server running on port 8080...")
+	http.ListenAndServe(":8080", r)
 }
