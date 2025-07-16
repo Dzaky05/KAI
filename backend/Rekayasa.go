@@ -1,355 +1,366 @@
 package main
 
 import (
-	"database/sql"
-	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"time" // Import time package
 
-	"github.com/gorilla/mux"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-var db *sql.DB
+// Struct model sesuai dengan skema database dan kebutuhan frontend
 
-type Personalia struct {
-	PersonaliaID int    `json:"personalia_id"`
-	NIP          string `json:"nip"`
-	Name         string `json:"name"`
-	Jabatan      string `json:"jabatan"`
-	Divisi       string `json:"divisi"`
-	Lokasi       string `json:"lokasi"`
-	Status       string `json:"status"`
-	NPWPNo       string `json:"npwp_no"`
-	PhoneNumber  string `json:"phone_number"`
-	UrgentNumber string `json:"urgent_number"`
-	ProfileID    int    `json:"profile_id"`
+// PersonaliaPartial mewakili data Personalia yang relevan untuk relasi tim
+// Kita hanya perlu ID dan mungkin field identifikasi seperti NIP atau Nama jika ada di tabel Personalia.
+type PersonaliaPartial struct {
+	gorm.Model
+	PersonaliaID int `json:"personalia_id" gorm:"column:personalia_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
+	// Jika nama ada di tabel Personalia dan ingin disertakan:
+	// Name string `json:"name" gorm:"column:nama_kolom_nama_personalia"` // Contoh
+	// Jika NIP ingin disertakan:
+	// NIP string `json:"nip" gorm:"column:nip"` // Contoh
 }
 
-type Rekayasa struct {
-	RekayasaID int    `json:"rekayasa_id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Deadline   string `json:"deadline"`
-	Progress   int    `json:"progress"`
-	Team       []PersonaliaTeam `json:"team"` 
-}
-
+// RekayasaTeam adalah tabel pivot untuk relasi Many-to-Many antara Rekayasa dan Personalia
 type RekayasaTeam struct {
-	RekayasaTeamID int `json:"rekayasa_team_id"`
-	PersonaliaID   int `json:"personalia_id"`
-	RekayasaID     int `json:"rekayasa_id"`
+	gorm.Model
+	RekayasaTeamID int  `gorm:"column:rekayasa_team_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
+	RekayasaID     uint `gorm:"column:rekayasa_id"`
+	PersonaliaID   uint `gorm:"column:personalia_id"`
 }
 
-type PersonaliaTeam struct {
-	PersonaliaID int    `json:"personalia_id"`
-	NIP          string `json:"nip"`
-	Name         string `json:"name"`
-	Jabatan      string `json:"jabatan"`
-	Divisi       string `json:"divisi"`
+// Rekayasa mewakili struktur data untuk item rekayasa
+type Rekayasa struct {
+	gorm.Model            // Menyediakan ID (rekayasa_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
+	RekayasaID int        `json:"id" gorm:"column:rekayasa_id;primaryKey"` // Mapping id frontend ke rekayasa_id
+	Name       string     `json:"name" gorm:"column:name"`
+	Status     string     `json:"status" gorm:"column:status"`
+	TeamText   string     `json:"team_text" gorm:"column:team"`              // Field TEXT "team" di database (mungkin digunakan untuk menyimpan string nama tim?)
+	Deadline   *time.Time `json:"deadline" gorm:"column:deadline;type:date"` // Menggunakan pointer untuk tanggal opsional
+	Progress   string     `json:"progress_text" gorm:"column:progress"`      // Field VARCHAR "progress" di database (mungkin string deskripsi?)
+	// Catatan: Frontend Anda menggunakan 'progress' sebagai int (persentase). Ini tidak sesuai dengan DB skema.
+	// Saya akan menggunakan 'ProgressText' untuk mapping ke kolom 'progress' VARCHAR.
+	// Jika kolom 'progress' di DB seharusnya INT untuk persentase, skema perlu diperbaiki.
+	ProgressPercentage int `json:"progress" gorm:"-"` // Field transient untuk persentase, dihitung/ditentukan di Go
+
+	// Relasi Many-to-Many: Rekayasa memiliki banyak Personalia melalui tabel pivot RekayasaTeam
+	// Tag `many2many:rekayasa_team` memberitahu GORM untuk menggunakan tabel pivot tersebut.
+	// Tag `joinTable` dan `joinForeignKey`/`references` memberikan detail eksplisit.
+	TeamMembers []PersonaliaPartial `json:"team,omitempty" gorm:"many2many:rekayasa_team;joinTable:rekayasa_team;joinForeignKey:rekayasa_id;references:personalia_id"`
+
+	// Catatan tentang field 'team' TEXT dan 'progress' VARCHAR di DB vs frontend:
+	// Frontend menggunakan `team` sebagai array string (inisial) dan `progress` sebagai integer (persentase).
+	// Ini tidak langsung cocok dengan kolom `team` (TEXT) dan `progress` (VARCHAR) di skema database.
+	// Saya akan memetakan field `Team` (array string) di frontend ke relasi Many-to-Many `TeamMembers`
+	// dan field `progress` (integer) di frontend ke field transient `ProgressPercentage`.
+	// Anda perlu memutuskan bagaimana data ini sebenarnya disimpan/direpresentasikan di database Anda.
+	// Mungkin kolom 'team' TEXT digunakan untuk deskripsi tim, bukan anggota tim individu.
+	// Mungkin kolom 'progress' VARCHAR menyimpan deskripsi progres, bukan persentase.
+	// Contoh ini akan mengasumsikan relasi Many-to-Many untuk anggota tim dan menghitung persentase dari field lain jika ada,
+	// atau menggunakan field transient jika data persentase tidak disimpan langsung di DB Rekayasa.
+	// Berdasarkan kode React, tampaknya `progress` (integer) disimpan per proyek.
+	// Saya akan menggunakan field transient `ProgressPercentage` untuk mencocokkan frontend.
+	// Kolom `progress` di DB akan dipetakan ke `ProgressText`.
 }
 
-func connectDB() {
+var db *gorm.DB // Menggunakan GORM DB instance
+
+// initDatabase melakukan koneksi awal ke database menggunakan GORM
+func initDatabase() {
 	var err error
-	db, err = sql.Open("mysql", "username:password@tcp(localhost:3306)/kai_balai_yasa")
+	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
+	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
+	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatalf("Gagal koneksi database: %v", err)
 	}
-	
-	if err = db.Ping(); err != nil {
-		log.Fatal("Failed to ping database:", err)
+
+	// AutoMigrate akan membuat atau memperbarui tabel Rekayasa, RekayasaTeam, PersonaliaPartial
+	err = db.AutoMigrate(&Rekayasa{}, &RekayasaTeam{}, &PersonaliaPartial{}) // Migrasi tabel pivot dan PersonaliaPartial
+	if err != nil {
+		log.Fatalf("Gagal migrasi database untuk Rekayasa/relasi: %v", err)
 	}
-	
-	log.Println("Database connected successfully")
-}
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	log.Println("Koneksi database dan migrasi Rekayasa/relasi berhasil!")
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w)
-		
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
+// calculateProgressPercentage mengasumsikan ada kolom lain di database untuk menghitung progres,
+// atau menggunakan field 'ProgressText' jika formatnya numerik, atau sumber lain.
+// Karena skema DB hanya memiliki 'progress' VARCHAR, kita akan mengosongkannya di backend
+// dan membiarkan frontend menghitung/menampilkannya jika perlu.
+// Jika ada kolom INT di DB untuk persentase, kita akan memetakan itu.
+// Untuk mencocokkan frontend yang menggunakan 'progress' INT, saya akan tambahkan field transient.
+func calculateProgressPercentage(r *Rekayasa) {
+	// Logika placeholder: Dalam skema database, field 'progress' adalah VARCHAR.
+	// Frontend menggunakannya sebagai integer (persentase).
+	// Jika ada kolom INT di DB, kita akan membacanya.
+	// Karena tidak ada di skema, kita akan mengisi field transient 'ProgressPercentage' dengan nilai default atau dari sumber lain.
+	// Dalam contoh ini, kita hanya mengosongkannya, atau jika ada data di ProgressText yang bisa di-parse
+	// (meskipun VARCHAR biasanya bukan untuk nilai numerik ini).
+	// Jika ada kolom INT misalnya `completion_percentage` di tabel Rekayasa, kita akan pakai itu.
+	// r.ProgressPercentage = r.CompletionPercentage // Contoh jika ada kolom CompletionPercentage INT
+	r.ProgressPercentage = 0 // Default
+	// Coba parse dari ProgressText jika formatnya numerik (kemungkinan tidak)
+	if progressInt, err := strconv.Atoi(r.ProgressText); err == nil {
+		r.ProgressPercentage = progressInt
+	}
+}
+
+// mapTeamMembers to string array for frontend
+func mapTeamMembersToFrontend(members []PersonaliaPartial) []string {
+	var teamStrings []string
+	for _, member := range members {
+		// Asumsi: Anda ingin menampilkan NIP atau Nama (jika ada di PersonaliaPartial)
+		// Jika nama ada di PersonaliaPartial:
+		// teamStrings = append(teamStrings, member.Name) // Contoh
+		// Jika hanya NIP:
+		teamStrings = append(teamStrings, member.NIP) // Contoh
+		// Jika tidak ada nama/NIP di PersonaliaPartial, Anda perlu mendapatkan data Personalia lengkap
+		// atau menyimpan inisial/nama di tabel pivot atau tabel Rekayasa itu sendiri.
+		// Berdasarkan frontend yang menggunakan inisial (BS, AW), Anda mungkin menyimpan inisial di tabel pivot
+		// atau tabel Personalia dan mengambilnya.
+		teamStrings = append(teamStrings, "Inisial Anggota") // Placeholder
+	}
+	return teamStrings
+}
+
+// getAllRekayasa mengambil semua item rekayasa dari database beserta anggota tim terkait
+func getAllRekayasa(c *gin.Context) {
+	var rekayasaItems []Rekayasa
+	// Menggunakan Preload("TeamMembers") untuk memuat relasi Many-to-Many Personalia
+	if result := db.Preload("TeamMembers").Find(&rekayasaItems); result.Error != nil {
+		log.Printf("Error saat mengambil data rekayasa: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data rekayasa", "details": result.Error.Error()})
+		return
+	}
+
+	// Mengisi field transient ProgressPercentage dan Team (array string)
+	for i := range rekayasaItems {
+		calculateProgressPercentage(&rekayasaItems[i])                                 // Hitung/isi persentase
+		rekayasaItems[i].Team = mapTeamMembersToFrontend(rekayasaItems[i].TeamMembers) // Petakan anggota tim ke array string
+	}
+
+	c.JSON(http.StatusOK, rekayasaItems)
+}
+
+// getRekayasaByID mengambil item rekayasa berdasarkan ID beserta anggota tim terkait
+func getRekayasaByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID rekayasa tidak valid"})
+		return
+	}
+
+	var item Rekayasa
+	// Menggunakan Preload("TeamMembers") untuk memuat relasi Many-to-Many Personalia
+	if result := db.Preload("TeamMembers").First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Data rekayasa tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mengambil rekayasa dengan ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data rekayasa", "details": result.Error.Error()})
 		}
-		
-		next.ServeHTTP(w, r)
-	})
-}
-
-
-func getAllRekayasa(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	rows, err := db.Query("SELECT rekayasa_id, name, status, deadline, progress FROM rekayasa")
-	if err != nil {
-		http.Error(w, err.Error(), 500)
 		return
 	}
-	defer rows.Close()
 
-	var list []Rekayasa
-	for rows.Next() {
-		var rk Rekayasa
-		if err := rows.Scan(&rk.RekayasaID, &rk.Name, &rk.Status, &rk.Deadline, &rk.Progress); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
+	// Mengisi field transient ProgressPercentage dan Team (array string)
+	calculateProgressPercentage(&item)                     // Hitung/isi persentase
+	item.Team = mapTeamMembersToFrontend(item.TeamMembers) // Petakan anggota tim ke array string
+
+	c.JSON(http.StatusOK, item)
+}
+
+// createRekayasa menambahkan item rekayasa baru ke database beserta anggota tim terkait
+func createRekayasa(c *gin.Context) {
+	var newItem Rekayasa
+	if err := c.ShouldBindJSON(&newItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		return
+	}
+
+	// Validasi sederhana
+	if newItem.Name == "" || newItem.Status == "" || newItem.Deadline == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (name, status, deadline) wajib diisi"})
+		return
+	}
+
+	// Jika rekayasa_id di database auto-increment, atur ke 0
+	newItem.RekayasaID = 0
+
+	// *** Penanganan Relasi Many-to-Many TeamMembers saat Create:
+	// Frontend mengirimkan array string `team`. Database menggunakan relasi Many-to-Many ke `personalia`.
+	// Anda perlu logika untuk:
+	// 1. Mengambil/mencari objek Personalia berdasarkan string (inisial/nama/NIP) dari frontend.
+	// 2. Menautkan objek Personalia yang ditemukan ke slice `TeamMembers` di `newItem`.
+	// Contoh:
+	// var teamMembers []PersonaliaPartial
+	// for _, memberIdentifier := range newItem.Team { // Iterasi string dari frontend
+	//    // Logika untuk mencari PersonaliaPartial berdasarkan memberIdentifier
+	//    var personaliaMember PersonaliaPartial
+	//    if result := db.Where("nip = ?", memberIdentifier).First(&personaliaMember); result.Error == nil { // Contoh cari berdasarkan NIP
+	//        teamMembers = append(teamMembers, personaliaMember)
+	//    }
+	// }
+	// newItem.TeamMembers = teamMembers // Kaitkan slice PersonaliaPartial dengan newItem
+	// GORM akan membuat entri di tabel pivot RekayasaTeam saat Create.
+
+	// Untuk kesederhanaan, contoh ini tidak mengimplementasikan logika pencarian Personalia berdasarkan string frontend.
+	// Anda harus melengkapi ini. Jika frontend mengirim array ID Personalia, itu akan lebih mudah.
+
+	// Menggunakan GORM untuk membuat data rekayasa (dan relasi Many-to-Many jika TeamMembers lengkap)
+	if result := db.Create(&newItem); result.Error != nil {
+		log.Printf("Error saat menambahkan rekayasa: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menambahkan item rekayasa", "details": result.Error.Error()})
+		return
+	}
+
+	// Muat ulang item dengan relasi yang sudah disimpan untuk respons
+	var createdItem Rekayasa
+	db.Preload("TeamMembers").First(&createdItem, newItem.RekayasaID)
+	// Isi field transient ProgressPercentage dan Team (array string)
+	calculateProgressPercentage(&createdItem)
+	createdItem.Team = mapTeamMembersToFrontend(createdItem.TeamMembers)
+
+	c.JSON(http.StatusCreated, createdItem) // Kirim kembali item yang baru ditambahkan
+}
+
+// updateRekayasa memperbarui item rekayasa di database beserta anggota tim terkait
+func updateRekayasa(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID rekayasa tidak valid"})
+		return
+	}
+
+	var updatedItem Rekayasa
+	if err := c.ShouldBindJSON(&updatedItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		return
+	}
+
+	// Validasi sederhana
+	if updatedItem.Name == "" || updatedItem.Status == "" || updatedItem.Deadline == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (name, status, deadline) wajib diisi"})
+		return
+	}
+
+	// Cari item yang ada berdasarkan ID (primary key), preload relasi
+	var item Rekayasa
+	if result := db.Preload("TeamMembers").First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Item rekayasa tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mencari rekayasa dengan ID %d untuk diperbarui: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item rekayasa", "details": result.Error.Error()})
 		}
-	
-		team, err := getTeamByRekayasaID(rk.RekayasaID)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
+		return
+	}
+
+	// Update field dasar item yang ada
+	item.Name = updatedItem.Name
+	item.Status = updatedItem.Status
+	item.Deadline = updatedItem.Deadline
+	// Update field lain jika ada (TeamText, ProgressText)
+
+	// *** Penanganan Relasi Many-to-Many TeamMembers saat Update:
+	// Frontend mengirimkan array string `team` baru.
+	// Anda perlu logika untuk:
+	// 1. Menentukan anggota tim baru berdasarkan array string dari frontend (sama seperti saat create).
+	// 2. Menggunakan metode GORM Association untuk mengganti anggota tim yang ada dengan daftar baru.
+	// Contoh:
+	// var newTeamMembers []PersonaliaPartial
+	// // Logika untuk mencari PersonaliaPartial berdasarkan string dari updatedItem.Team
+	// // ... mengisi newTeamMembers
+	// db.Model(&item).Association("TeamMembers").Replace(newTeamMembers) // Mengganti semua anggota tim
+
+	// Untuk kesederhanaan, contoh ini tidak mengimplementasikan update relasi Many-to-Many Personnel.
+	// Anda harus melengkapi ini. Jika frontend mengirim array ID Personalia, itu akan lebih mudah.
+
+	// Menggunakan GORM untuk menyimpan perubahan pada Rekayasa utama
+	if result := db.Save(&item); result.Error != nil {
+		log.Printf("Error saat memperbarui rekayasa dengan ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui item rekayasa", "details": result.Error.Error()})
+		return
+	}
+
+	// Muat ulang item dengan relasi untuk respons (jika update relasi dilakukan)
+	var savedItem Rekayasa
+	db.Preload("TeamMembers").First(&savedItem, item.RekayasaID)
+	// Isi field transient ProgressPercentage dan Team (array string)
+	calculateProgressPercentage(&savedItem)
+	savedItem.Team = mapTeamMembersToFrontend(savedItem.TeamMembers)
+
+	c.JSON(http.StatusOK, savedItem) // Kirim kembali item yang diperbarui
+}
+
+// deleteRekayasa menghapus item rekayasa dari database
+func deleteRekayasa(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID rekayasa tidak valid"})
+		return
+	}
+
+	// Cari item yang akan dihapus
+	var item Rekayasa
+	if result := db.Preload("TeamMembers").First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Item rekayasa tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mencari rekayasa dengan ID %d untuk dihapus: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item rekayasa", "details": result.Error.Error()})
 		}
-		rk.Team = team
-		
-		list = append(list, rk)
+		return
 	}
-	json.NewEncoder(w).Encode(list)
+
+	// GORM akan menghapus relasi Many-to-Many di tabel pivot RekayasaTeam secara otomatis
+	// saat Rekayasa dihapus.
+
+	// Menggunakan GORM untuk menghapus data Rekayasa
+	if result := db.Delete(&item); result.Error != nil {
+		log.Printf("Error saat menghapus rekayasa dengan ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus item rekayasa", "details": result.Error.Error()})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
-
-func getRekayasaByID(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	id := mux.Vars(r)["id"]
-
-	var rk Rekayasa
-	err := db.QueryRow("SELECT rekayasa_id, name, status, deadline, progress FROM rekayasa WHERE rekayasa_id = ?", id).
-		Scan(&rk.RekayasaID, &rk.Name, &rk.Status, &rk.Deadline, &rk.Progress)
-	if err == sql.ErrNoRows {
-		http.Error(w, "Data not found", 404)
-		return
-	} else if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	team, err := getTeamByRekayasaID(rk.RekayasaID)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	rk.Team = team
-
-	json.NewEncoder(w).Encode(rk)
-}
-
-func createRekayasa(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	var rk Rekayasa
-	if err := json.NewDecoder(r.Body).Decode(&rk); err != nil {
-		http.Error(w, "Invalid input: "+err.Error(), 400)
-		return
-	
-	result, err := db.Exec("INSERT INTO rekayasa (name, status, deadline, progress) VALUES (?, ?, ?, ?)",
-		rk.Name, rk.Status, rk.Deadline, rk.Progress)
-	if err != nil {
-		http.Error(w, "Failed to insert: "+err.Error(), 500)
-		return
-	}
-
-	// Get the inserted ID
-	rekayasaID, err := result.LastInsertId()
-	if err != nil {
-		http.Error(w, "Failed to get insert ID: "+err.Error(), 500)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Data inserted successfully",
-		"rekayasa_id": rekayasaID,
-	})
-}
-
-func updateRekayasa(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	id := mux.Vars(r)["id"]
-	var rk Rekayasa
-	if err := json.NewDecoder(r.Body).Decode(&rk); err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-
-	result, err := db.Exec(`UPDATE rekayasa SET name=?, status=?, deadline=?, progress=? WHERE rekayasa_id=?`,
-		rk.Name, rk.Status, rk.Deadline, rk.Progress, id)
-	if err != nil {
-		http.Error(w, "Failed to update: "+err.Error(), 500)
-		return
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "Data not found", 404)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Updated successfully"})
-}
-
-func deleteRekayasa(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	id := mux.Vars(r)["id"]
-	
-	// Delete team assignments first
-	_, err := db.Exec("DELETE FROM rekayasa_team WHERE rekayasa_id = ?", id)
-	if err != nil {
-		http.Error(w, "Failed to delete team assignments: "+err.Error(), 500)
-		return
-	}
-	
-	// Delete rekayasa
-	result, err := db.Exec("DELETE FROM rekayasa WHERE rekayasa_id = ?", id)
-	if err != nil {
-		http.Error(w, "Failed to delete: "+err.Error(), 500)
-		return
-	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "Data not found", 404)
-		return
-	}
-	
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ======================= TEAM MANAGEMENT =======================
-
-func addTeamMember(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	var teamMember RekayasaTeam
-	if err := json.NewDecoder(r.Body).Decode(&teamMember); err != nil {
-		http.Error(w, "Invalid input: "+err.Error(), 400)
-		return
-	}
-
-	_, err := db.Exec("INSERT INTO rekayasa_team (personalia_id, rekayasa_id) VALUES (?, ?)",
-		teamMember.PersonaliaID, teamMember.RekayasaID)
-	if err != nil {
-		http.Error(w, "Failed to add team member: "+err.Error(), 500)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Team member added successfully"})
-}
-
-func removeTeamMember(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	rekayasaID := mux.Vars(r)["rekayasa_id"]
-	personaliaID := mux.Vars(r)["personalia_id"]
-	
-	result, err := db.Exec("DELETE FROM rekayasa_team WHERE rekayasa_id = ? AND personalia_id = ?", 
-		rekayasaID, personaliaID)
-	if err != nil {
-		http.Error(w, "Failed to remove team member: "+err.Error(), 500)
-		return
-	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "Team member not found", 404)
-		return
-	}
-	
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ======================= HELPER FUNCTIONS =======================
-
-func getTeamByRekayasaID(rekayasaID int) ([]PersonaliaTeam, error) {
-	query := `
-		SELECT p.personalia_id, p.nip, p.name, p.jabatan, p.divisi
-		FROM personalia p
-		INNER JOIN rekayasa_team rt ON p.personalia_id = rt.personalia_id
-		WHERE rt.rekayasa_id = ?
-	`
-	
-	rows, err := db.Query(query, rekayasaID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	
-	var team []PersonaliaTeam
-	for rows.Next() {
-		var member PersonaliaTeam
-		if err := rows.Scan(&member.PersonaliaID, &member.NIP, &member.Name, &member.Jabatan, &member.Divisi); err != nil {
-			return nil, err
-		}
-		team = append(team, member)
-	}
-	
-	return team, nil
-}
-
-// ======================= PERSONALIA HANDLERS =======================
-
-func getAllPersonalia(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-	
-	rows, err := db.Query("SELECT personalia_id, nip, name, jabatan, divisi, lokasi, status, npwp_no, phone_number, urgent_number, profile_id FROM personalia")
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	defer rows.Close()
-
-	var list []Personalia
-	for rows.Next() {
-		var p Personalia
-		if err := rows.Scan(&p.PersonaliaID, &p.NIP, &p.Name, &p.Jabatan, &p.Divisi, &p.Lokasi, &p.Status, &p.NPWPNo, &p.PhoneNumber, &p.UrgentNumber, &p.ProfileID); err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		list = append(list, p)
-	}
-	json.NewEncoder(w).Encode(list)
-}
-
-// ======================= MAIN =======================
 
 func main() {
-	connectDB()
-	defer db.Close()
-	
-	r := mux.NewRouter()
-	
-	// Apply CORS middleware
-	r.Use(corsMiddleware)
-	
-	// Rekayasa routes
-	r.HandleFunc("/api/rekayasa", getAllRekayasa).Methods("GET")
-	r.HandleFunc("/api/rekayasa/{id}", getRekayasaByID).Methods("GET")
-	r.HandleFunc("/api/rekayasa", createRekayasa).Methods("POST")
-	r.HandleFunc("/api/rekayasa/{id}", updateRekayasa).Methods("PUT")
-	r.HandleFunc("/api/rekayasa/{id}", deleteRekayasa).Methods("DELETE")
-	
-	// Team management routes
-	r.HandleFunc("/api/rekayasa/team", addTeamMember).Methods("POST")
-	r.HandleFunc("/api/rekayasa/{rekayasa_id}/team/{personalia_id}", removeTeamMember).Methods("DELETE")
-	
-	// Personalia routes
-	r.HandleFunc("/api/personalia", getAllPersonalia).Methods("GET")
-	
-	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
+
+	r := gin.Default() // Inisialisasi Gin router
+
+	// Konfigurasi Middleware CORS
+	// SESUAIKAN INI UNTUK PRODUCTION!
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
+	r.Use(cors.New(config))
+
+	// Definisikan endpoint API untuk Rekayasa
+	api := r.Group("/api/rekayasa") // Menggunakan path /api/rekayasa
+	{
+		api.GET("/", getAllRekayasa)       // GET /api/rekayasa/
+		api.GET("/:id", getRekayasaByID)   // GET /api/rekayasa/:id
+		api.POST("/", createRekayasa)      // POST /api/rekayasa/
+		api.PUT("/:id", updateRekayasa)    // PUT /api/rekayasa/:id
+		api.DELETE("/:id", deleteRekayasa) // DELETE /api/rekayasa/:id
+
+		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk mengelola:
+		// - Anggota tim rekayasa secara individual (menambah/menghapus dari RekayasaTeam)
+	}
+
+	log.Println("Server berjalan di http://localhost:8080")
+	log.Fatal(r.Run(":8080")) // Jalankan server
 }

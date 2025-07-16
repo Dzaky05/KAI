@@ -1,127 +1,283 @@
 package main
 
 import (
-	"database/sql"
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+	"time" // Import time package
 
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/gorilla/mux"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
+// Struct model sesuai dengan skema database dan kebutuhan frontend
+
+// History mewakili struktur data untuk riwayat overhaul
+type History struct {
+	gorm.Model            // Menyediakan ID (history_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
+	HistoryID   int       `json:"id" gorm:"column:history_id;primaryKey"`              // Sesuaikan autoIncrement jika perlu
+	Timestamp   time.Time `json:"timestamp" gorm:"column:timestamp;type:varchar(100)"` // Simpan sebagai string di DB, parse sebagai time.Time di Go
+	Description string    `json:"description" gorm:"column:description"`
+	// Relasi ForeignKey ke tabel Overhaul (jika history_id di overhaul adalah foreign key ke tabel history)
+	// Namun, berdasarkan skema, history_id adalah foreign key di tabel Overhaul yang merujuk ke tabel History.
+	// Jadi, relasi One-to-One atau One-to-Many dari Overhaul ke History lebih mungkin terjadi
+	// atau relasi Many-to-One dari History ke Overhaul.
+	// Berdasarkan frontend yang embed history array di Overhaul, relasi One-to-Many (Overhaul memiliki banyak History) lebih sesuai.
+	OverhaulID uint `gorm:"column:overhaul_id"` // Foreign key ke tabel Overhaul
+}
+
+// Overhaul mewakili struktur data untuk item overhaul
 type Overhaul struct {
-	ID           int    `json:"id"`
-	Name         string `json:"name"`
-	Location     string `json:"location"`
-	Status       string `json:"status"`
-	Estimate     string `json:"estimate"`
-	Progress     int    `json:"progress"`
-	PersonaliaID int    `json:"personalia_id"`
-	MaterialID   int    `json:"material_id"`
-	InventoryID  int    `json:"inventory_id"`
-	HistoryID    int    `json:"history_id"`
+	gorm.Model             // Menyediakan ID (overhaul_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
+	OverhaulID   int       `json:"id" gorm:"column:overhaul_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
+	Name         string    `json:"name" gorm:"column:name"`
+	Location     string    `json:"lokasi" gorm:"column:location"` // Mapping lokasi frontend ke kolom location
+	Status       string    `json:"status" gorm:"column:status"`
+	Estimate     time.Time `json:"estimasi" gorm:"column:estimate;type:varchar(50)"` // Simpan sebagai string di DB, parse sebagai time.Time di Go
+	Progress     int       `json:"progress" gorm:"column:progress"`
+	PersonaliaID int       `json:"personalia_id" gorm:"column:personalia_id"` // Foreign key
+	MaterialsID  int       `json:"materials_id" gorm:"column:materials_id"`   // Foreign key
+	HistoryID    int       `json:"history_id" gorm:"column:history_id"`       // Foreign key ke tabel History utama (jika ada) - *Perhatikan ini berbeda dengan relasi di bawah*
+	InventoryID  int       `json:"inventory_id" gorm:"column:inventory_id"`   // Foreign key
+
+	// Relasi One-to-Many: Overhaul memiliki banyak History
+	// GORM akan menggunakan OverhaulID di struct History sebagai foreign key secara default
+	History []History `json:"history,omitempty" gorm:"foreignKey:OverhaulID"` // Embed History sebagai array
+
+	// Relasi ke tabel lain (jika perlu dimuat bersamaan, gunakan Preload)
+	// Personalia models.Personalia `json:"personalia,omitempty" gorm:"foreignKey:PersonaliaID"`
+	// Materials  models.Materials  `json:"materials,omitempty" gorm:"foreignKey:MaterialsID"`
+	// Inventory  models.Inventory  `json:"inventory,omitempty" gorm:"foreignKey:InventoryID"`
+
+	// Catatan: HistoryID di tabel Overhaul dan relasi One-to-Many ke History[]
+	// tampaknya sedikit kontradiktif berdasarkan skema dan frontend.
+	// Frontend mengelola daftar riwayat per item overhaul.
+	// Saya akan mengabaikan HistoryID di struct Overhaul dan fokus pada relasi One-to-Many History[]
+	// Jika HistoryID di Overhaul merujuk ke History utama yang unik, struktur perlu disesuaikan.
+	// Asumsi: Frontend mengelola array riwayat unik untuk setiap item overhaul, bukan merujuk ke satu record di tabel History.
+	// Jika tabel History adalah log global, maka relasinya berbeda.
+	// Berdasarkan frontend, saya akan memperlakukan History sebagai entitas yang terkait langsung dengan Overhaul.
 }
 
-var db *sql.DB
+var db *gorm.DB // Menggunakan GORM DB instance
 
-func connectDB() {
+// initDatabase melakukan koneksi awal ke database menggunakan GORM
+func initDatabase() {
 	var err error
-	dsn := "root:@tcp(127.0.0.1:3306)/kai_balai_yasa"
-	db, err = sql.Open("mysql", dsn)
+	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
+	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
+	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("DB Connection error:", err)
+		log.Fatalf("Gagal koneksi database: %v", err)
 	}
+
+	// AutoMigrate akan membuat atau memperbarui tabel Overhaul dan History
+	// GORM akan menangani pembuatan kolom foreign key secara otomatis berdasarkan relasi
+	err = db.AutoMigrate(&Overhaul{}, &History{})
+	if err != nil {
+		log.Fatalf("Gagal migrasi database untuk Overhaul dan History: %v", err)
+	}
+
+	log.Println("Koneksi database dan migrasi Overhaul/History berhasil!")
 }
 
-func getAllOverhauls(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT * FROM overhaul")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+// getAllOverhaul mengambil semua item overhaul dari database beserta riwayatnya
+func getAllOverhaul(c *gin.Context) {
+	var overhaulItems []Overhaul
+	// Menggunakan Preload("History") untuk memuat data riwayat terkait
+	if result := db.Preload("History").Find(&overhaulItems); result.Error != nil {
+		log.Printf("Error saat mengambil data overhaul: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data overhaul", "details": result.Error.Error()})
 		return
 	}
-	defer rows.Close()
+	c.JSON(http.StatusOK, overhaulItems)
+}
 
-	var overhauls []Overhaul
-	for rows.Next() {
-		var o Overhaul
-		if err := rows.Scan(&o.ID, &o.Name, &o.Location, &o.Status, &o.Estimate, &o.Progress, &o.PersonaliaID, &o.MaterialID, &o.InventoryID, &o.HistoryID); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+// getOverhaulByID mengambil item overhaul berdasarkan ID beserta riwayatnya
+func getOverhaulByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID overhaul tidak valid"})
+		return
+	}
+
+	var item Overhaul
+	// Menggunakan Preload("History") untuk memuat data riwayat terkait
+	if result := db.Preload("History").First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Data overhaul tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mengambil overhaul dengan ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data overhaul", "details": result.Error.Error()})
 		}
-		overhauls = append(overhauls, o)
+		return
 	}
-	json.NewEncoder(w).Encode(overhauls)
+	c.JSON(http.StatusOK, item)
 }
 
-func getOverhaulByID(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-	var o Overhaul
-	err := db.QueryRow("SELECT * FROM overhaul WHERE overhaul_id = ?", id).Scan(&o.ID, &o.Name, &o.Location, &o.Status, &o.Estimate, &o.Progress, &o.PersonaliaID, &o.MaterialID, &o.InventoryID, &o.HistoryID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+// createOverhaul menambahkan item overhaul baru ke database beserta riwayatnya
+func createOverhaul(c *gin.Context) {
+	var newItem Overhaul
+	if err := c.ShouldBindJSON(&newItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
 		return
 	}
-	json.NewEncoder(w).Encode(o)
+
+	// Validasi sederhana
+	if newItem.Name == "" || newItem.Location == "" || newItem.Status == "" || newItem.Estimate.IsZero() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (name, lokasi, status, estimasi) wajib diisi"})
+		return
+	}
+
+	// Jika overhaul_id di database auto-increment, atur ke 0 agar GORM mengisinya
+	newItem.OverhaulID = 0
+
+	// GORM akan menyimpan item Overhaul dan riwayat terkait secara bersamaan
+	if result := db.Create(&newItem); result.Error != nil {
+		log.Printf("Error saat menambahkan overhaul: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menambahkan item overhaul", "details": result.Error.Error()})
+		return
+	}
+
+	// Muat ulang item dengan riwayat yang sudah disimpan untuk respons
+	var createdItem Overhaul
+	db.Preload("History").First(&createdItem, newItem.OverhaulID)
+
+	c.JSON(http.StatusCreated, createdItem) // Kirim kembali item yang baru ditambahkan (termasuk ID dan riwayat)
 }
 
-func createOverhaul(w http.ResponseWriter, r *http.Request) {
-	var o Overhaul
-	if err := json.NewDecoder(r.Body).Decode(&o); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	query := `INSERT INTO overhaul (name, location, status, estimate, progress, personalia_id, material_id, inventory_id, history_id) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	res, err := db.Exec(query, o.Name, o.Location, o.Status, o.Estimate, o.Progress, o.PersonaliaID, o.MaterialID, o.InventoryID, o.HistoryID)
+// updateOverhaul memperbarui item overhaul di database beserta riwayatnya
+func updateOverhaul(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID overhaul tidak valid"})
 		return
 	}
-	id, _ := res.LastInsertId()
-	o.ID = int(id)
-	json.NewEncoder(w).Encode(o)
+
+	var updatedItem Overhaul
+	if err := c.ShouldBindJSON(&updatedItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		return
+	}
+
+	// Validasi sederhana
+	if updatedItem.Name == "" || updatedItem.Location == "" || updatedItem.Status == "" || updatedItem.Estimate.IsZero() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (name, lokasi, status, estimasi) wajib diisi"})
+		return
+	}
+
+	// Cari item yang ada berdasarkan ID (primary key)
+	var item Overhaul
+	if result := db.Preload("History").First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Item overhaul tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mencari overhaul dengan ID %d untuk diperbarui: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item overhaul", "details": result.Error.Error()})
+		}
+		return
+	}
+
+	// Update field item yang ada dengan data dari updatedItem
+	item.Name = updatedItem.Name
+	item.Location = updatedItem.Location
+	item.Status = updatedItem.Status
+	item.Estimate = updatedItem.Estimate
+	item.Progress = updatedItem.Progress
+	// Update field lain jika ada (PersonaliaID, MaterialsID, InventoryID)
+
+	// Mengelola relasi History:
+	// GORM memiliki cara untuk mengelola relasi Many-to-Many atau One-to-Many saat update.
+	// Jika Anda ingin mengganti seluruh daftar riwayat, bisa menggunakan:
+	// db.Model(&item).Association("History").Replace(updatedItem.History)
+	// Jika Anda ingin menghapus riwayat yang tidak ada di updatedItem.History dan menambahkan yang baru:
+	db.Model(&item).Association("History").Clear()                     // Hapus semua riwayat yang terkait saat ini
+	db.Model(&item).Association("History").Append(updatedItem.History) // Tambahkan riwayat baru dari updatedItem
+
+	// Perlu diingat bahwa mengelola riwayat seperti ini (mengganti seluruhnya) mungkin tidak ideal
+	// jika Anda ingin melacak perubahan riwayat secara individual (misalnya, siapa yang menambahkan/menghapus).
+	// Pendekatan yang lebih canggih mungkin melibatkan endpoint terpisah untuk mengelola riwayat per item overhaul.
+	// Untuk kesederhanaan sesuai frontend, saya menggunakan pendekatan mengganti seluruh array.
+
+	// Menggunakan GORM untuk menyimpan perubahan (akan menyimpan Overhaul dan relasi History yang dimodifikasi)
+	if result := db.Save(&item); result.Error != nil {
+		log.Printf("Error saat memperbarui overhaul dengan ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui item overhaul", "details": result.Error.Error()})
+		return
+	}
+
+	// Muat ulang item dengan riwayat yang sudah diperbarui untuk respons
+	var savedItem Overhaul
+	db.Preload("History").First(&savedItem, item.OverhaulID)
+
+	c.JSON(http.StatusOK, savedItem) // Kirim kembali item yang diperbarui
 }
 
-func updateOverhaul(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-	var o Overhaul
-	if err := json.NewDecoder(r.Body).Decode(&o); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	query := `UPDATE overhaul SET name=?, location=?, status=?, estimate=?, progress=?, personalia_id=?, material_id=?, inventory_id=?, history_id=? WHERE overhaul_id=?`
-	_, err := db.Exec(query, o.Name, o.Location, o.Status, o.Estimate, o.Progress, o.PersonaliaID, o.MaterialID, o.InventoryID, o.HistoryID, id)
+// deleteOverhaul menghapus item overhaul dari database beserta riwayat terkait
+func deleteOverhaul(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID overhaul tidak valid"})
 		return
 	}
-	o.ID, _ = strconv.Atoi(id)
-	json.NewEncoder(w).Encode(o)
-}
 
-func deleteOverhaul(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-	_, err := db.Exec("DELETE FROM overhaul WHERE overhaul_id = ?", id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Cari item yang akan dihapus
+	var item Overhaul
+	if result := db.Preload("History").First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Item overhaul tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mencari overhaul dengan ID %d untuk dihapus: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item overhaul", "details": result.Error.Error()})
+		}
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	// GORM secara otomatis akan menghapus riwayat terkait jika relasi didefinisikan dengan `OnDelete:cascade`
+	// atau jika Anda menggunakan metode penghapusan GORM yang tepat.
+	// Alternatif: Hapus riwayat terkait secara manual sebelum menghapus overhaul jika OnDelete tidak disetel.
+	// db.Where("overhaul_id = ?", item.OverhaulID).Delete(&History{})
+
+	// Menggunakan GORM untuk menghapus data Overhaul (akan menghapus riwayat terkait jika konfigurasi benar)
+	if result := db.Delete(&item); result.Error != nil {
+		log.Printf("Error saat menghapus overhaul dengan ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus item overhaul", "details": result.Error.Error()})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
 
 func main() {
-	connectDB()
-	defer db.Close()
+	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
 
-	r := mux.NewRouter()
-	r.HandleFunc("/api/overhaul", getAllOverhauls).Methods("GET")
-	r.HandleFunc("/api/overhaul/{id}", getOverhaulByID).Methods("GET")
-	r.HandleFunc("/api/overhaul", createOverhaul).Methods("POST")
-	r.HandleFunc("/api/overhaul/{id}", updateOverhaul).Methods("PUT")
-	r.HandleFunc("/api/overhaul/{id}", deleteOverhaul).Methods("DELETE")
+	r := gin.Default() // Inisialisasi Gin router
 
-	log.Println("Server running on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	// Konfigurasi Middleware CORS
+	// SESUAIKAN INI UNTUK PRODUCTION!
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
+	r.Use(cors.New(config))
+
+	// Definisikan endpoint API untuk Overhaul
+	api := r.Group("/api/overhaul") // Menggunakan path /api/overhaul
+	{
+		api.GET("/", getAllOverhaul)       // GET /api/overhaul/
+		api.GET("/:id", getOverhaulByID)   // GET /api/overhaul/:id
+		api.POST("/", createOverhaul)      // POST /api/overhaul/
+		api.PUT("/:id", updateOverhaul)    // PUT /api/overhaul/:id
+		api.DELETE("/:id", deleteOverhaul) // DELETE /api/overhaul/:id
+	}
+
+	log.Println("Server berjalan di http://localhost:8080")
+	log.Fatal(r.Run(":8080")) // Jalankan server
 }

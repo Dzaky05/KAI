@@ -1,558 +1,358 @@
 package main
 
 import (
-	"database/sql"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 
+	// "time" // Import time package jika ada field tanggal di Profile (selain join_date di Personalia)
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/gorilla/mux"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause" // Import clause for eager loading
 )
 
-// Profile struct sesuai dengan table profile
-type Profile struct {
-	ID           int         `json:"id"`
-	Name         string      `json:"name"`
-	Email        string      `json:"email"`
-	Phone        string      `json:"phone"`
-	Address      string      `json:"address"`
-	EducationID  *int        `json:"educationId"`
-	ExperienceID *int        `json:"experienceId"`
-	PersonaliaID int         `json:"personaliaId"`
-	Education    *Education  `json:"education,omitempty"`
-	Experience   *Experience `json:"experience,omitempty"`
-	Personalia   *Personalia `json:"personalia,omitempty"`
-}
+// Struct model sesuai dengan skema database dan kebutuhan frontend
 
-// Education struct sesuai dengan table education
+// Education mewakili struktur data pendidikan (partial, jika perlu dimuat)
 type Education struct {
-	ID         int    `json:"id"`
-	Degree     string `json:"degree"`
-	University string `json:"university"`
-	Year       int    `json:"year"`
+	gorm.Model
+	EducationID int    `json:"education_id" gorm:"column:education_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
+	Degree      string `json:"degree" gorm:"column:degree"`
+	University  string `json:"university" gorm:"column:university"`
+	Year        string `json:"year" gorm:"column:year"` // Pertimbangkan tipe data int
 }
 
-// Experience struct sesuai dengan table experience
+// Experience mewakili struktur data pengalaman (partial, jika perlu dimuat)
 type Experience struct {
-	ID       int    `json:"id"`
-	Position string `json:"position"`
-	Period   string `json:"period"`
+	gorm.Model
+	ExperienceID int    `json:"experience_id" gorm:"column:experience_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
+	Position     string `json:"position" gorm:"column:position"`
+	Period       string `json:"period" gorm:"column:period"`
 }
 
-// Personalia struct sesuai dengan table personalia
-type Personalia struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	NIP           string `json:"nip"`
-	Jabatan       string `json:"jabatan"`
-	Divisi        string `json:"divisi"`
-	Lokasi        string `json:"lokasi"`
-	JoinDate      string `json:"joinDate"`
-	PhoneNumber   string `json:"phoneNumber"`
-	ProjectNumber string `json:"projectNumber"`
-	ProfileID     *int   `json:"profileId"`
+// PersonaliaPartial mewakili data Personalia yang relevan untuk Profile (NIP dan Nama jika ada)
+// Ini digunakan untuk memuat data Personalia yang terkait dengan Profile
+type PersonaliaPartial struct {
+	gorm.Model
+	PersonaliaID int    `json:"personalia_id" gorm:"column:personalia_id;primaryKey"`
+	NIP          string `json:"nip" gorm:"column:nip"`
+	// Asumsi: Nama pegawai ada di tabel Personalia atau terkait erat via Personalia
+	// Jika nama ada di tabel Personalia:
+	// Name string `json:"name" gorm:"column:nama_kolom_nama_personalia"` // Contoh
 }
 
-// Request structs untuk create/update
-type CreateProfileRequest struct {
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Phone        string `json:"phone"`
-	Address      string `json:"address"`
-	EducationID  *int   `json:"educationId"`
-	ExperienceID *int   `json:"experienceId"`
-	PersonaliaID int    `json:"personaliaId"`
+// Profile mewakili struktur data untuk item profile
+type Profile struct {
+	gorm.Model         // Menyediakan ID (profile_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
+	ProfileID   int    `json:"id" gorm:"column:profile_id;primaryKey"` // Mapping id frontend ke profile_id
+	Email       string `json:"email" gorm:"column:email"`
+	Address     string `json:"address" gorm:"column:addres"`           // Perhatikan typo di skema database (addres vs address)
+	PhoneNumber string `json:"phoneNumber" gorm:"column:phone_number"` // Mapping phoneNumber frontend ke phone_number
+
+	EducationID  uint `json:"education_id,omitempty" gorm:"column:education_id"`   // Foreign key
+	ExperienceID uint `json:"experience_id,omitempty" gorm:"column:experience_id"` // Foreign key
+
+	// Relasi One-to-One: Profile memiliki satu Education dan satu Experience
+	Education  *Education  `json:"education,omitempty" gorm:"foreignKey:EducationID"`   // Menggunakan pointer untuk One-to-One opsional
+	Experience *Experience `json:"experience,omitempty" gorm:"foreignKey:ExperienceID"` // Menggunakan pointer untuk One-to-One opsional
+
+	// Relasi One-to-One atau One-to-Many: Satu Profile bisa terkait dengan satu atau banyak Personalia?
+	// Berdasarkan frontend (satu NIP per profil), relasi One-to-One (satu Profile untuk satu Personalia) lebih mungkin.
+	// Namun, relasi di DB adalah Personalia punya ProfileID.
+	// Ini berarti One-to-One (Profile has one Personalia) atau One-to-Many (Profile has many Personalia).
+	// Untuk mengambil NIP dan Nama (jika di Personalia), kita bisa menggunakan:
+	// Personalia *PersonaliaPartial `json:"personalia,omitempty" gorm:"foreignKey:ProfileID"` // Jika One-to-One Profile has one Personalia
+	// ATAU (jika satu Profile bisa terkait dengan banyak Personalia, tapi frontend hanya menampilkan satu):
+	Personalials []PersonaliaPartial `json:"personalials,omitempty" gorm:"foreignKey:ProfileID"` // Jika One-to-Many Profile has many Personalials
+
+	// Field untuk Nama dan NIP dari Personalia (diisi saat mengambil data)
+	Name string `json:"name" gorm:"-"` // Field transient, tidak ada di tabel Profile
+	NIP  string `json:"nip" gorm:"-"`  // Field transient, tidak ada di tabel Profile
+
 }
 
-type UpdateProfileRequest struct {
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Phone        string `json:"phone"`
-	Address      string `json:"address"`
-	EducationID  *int   `json:"educationId"`
-	ExperienceID *int   `json:"experienceId"`
-}
+var db *gorm.DB // Menggunakan GORM DB instance
 
-type CreateEducationRequest struct {
-	Degree     string `json:"degree"`
-	University string `json:"university"`
-	Year       int    `json:"year"`
-}
-
-type CreateExperienceRequest struct {
-	Position string `json:"position"`
-	Period   string `json:"period"`
-}
-
-var db *sql.DB
-
-func initDB() {
+// initDatabase melakukan koneksi awal ke database menggunakan GORM
+func initDatabase() {
 	var err error
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa"
-	db, err = sql.Open("mysql", dsn)
+	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
+	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
+	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("Database connection failed:", err)
+		log.Fatalf("Gagal koneksi database: %v", err)
 	}
-}
 
-// Enable CORS
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w)
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// GET all profiles
-func getAllProfiles(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	rows, err := db.Query(`
-		SELECT p.id, p.name, p.email, p.phone, p.address, p.education_id, p.experience_id, p.personalia_id
-		FROM profile p
-	`)
+	// AutoMigrate akan membuat atau memperbarui tabel Profile, Education, Experience
+	// Kita juga perlu migrasi Personalia agar relasi bisa dikenali oleh GORM
+	err = db.AutoMigrate(&Profile{}, &Education{}, &Experience{}, &PersonaliaPartial{}) // Migrasi juga PersonaliaPartial
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		log.Fatalf("Gagal migrasi database untuk Profile/relasi: %v", err)
 	}
-	defer rows.Close()
 
+	log.Println("Koneksi database dan migrasi Profile/relasi berhasil!")
+}
+
+// getAllProfiles mengambil semua item profile dari database beserta relasi terkait
+func getAllProfiles(c *gin.Context) {
 	var profiles []Profile
-	for rows.Next() {
-		var p Profile
-		err := rows.Scan(&p.ID, &p.Name, &p.Email, &p.Phone, &p.Address, &p.EducationID, &p.ExperienceID, &p.PersonaliaID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Load related data
-		if p.EducationID != nil {
-			p.Education = getEducationByID(*p.EducationID)
-		}
-		if p.ExperienceID != nil {
-			p.Experience = getExperienceByID(*p.ExperienceID)
-		}
-		p.Personalia = getPersonaliaByID(p.PersonaliaID)
-
-		profiles = append(profiles, p)
-	}
-
-	json.NewEncoder(w).Encode(profiles)
-}
-
-// GET profile by ID
-func getProfileByID(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid profile ID", http.StatusBadRequest)
+	// Menggunakan Preload untuk memuat relasi Education, Experience, dan Personalia
+	// Menggunakan clauses.Preload(clause.Associations) untuk memuat semua asosiasi (termasuk PersonaliaPartial, Education, Experience)
+	if result := db.Preload(clause.Associations).Find(&profiles); result.Error != nil {
+		log.Printf("Error saat mengambil data profiles: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data profiles", "details": result.Error.Error()})
 		return
 	}
 
-	var p Profile
-	err = db.QueryRow(`
-		SELECT p.id, p.name, p.email, p.phone, p.address, p.education_id, p.experience_id, p.personalia_id
-		FROM profile p 
-		WHERE p.id = ?
-	`, id).Scan(&p.ID, &p.Name, &p.Email, &p.Phone, &p.Address, &p.EducationID, &p.ExperienceID, &p.PersonaliaID)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Profile not found", http.StatusNotFound)
+	// Mengisi field Name dan NIP transient dari data Personalials yang dimuat
+	for i := range profiles {
+		if len(profiles[i].Personalials) > 0 {
+			// Asumsi: Satu Profile terkait dengan setidaknya satu Personalia dan kita ambil yang pertama untuk NIP/Nama
+			profiles[i].NIP = profiles[i].Personalials[0].NIP
+			// Jika nama ada di PersonaliaPartial, ambil juga:
+			// profiles[i].Name = profiles[i].Personalials[0].Name // Contoh
+			// Jika nama tidak ada di Personalia, Anda perlu cara lain untuk mendapatkannya
+			// Untuk sementara, saya akan mengisi Name dengan placeholder atau mengosongkannya
+			profiles[i].Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			profiles[i].NIP = "N/A"
+			profiles[i].Name = "Nama Pegawai Tidak Diketahui"
 		}
-		return
 	}
 
-	// Load related data
-	if p.EducationID != nil {
-		p.Education = getEducationByID(*p.EducationID)
-	}
-	if p.ExperienceID != nil {
-		p.Experience = getExperienceByID(*p.ExperienceID)
-	}
-	p.Personalia = getPersonaliaByID(p.PersonaliaID)
-
-	json.NewEncoder(w).Encode(p)
+	c.JSON(http.StatusOK, profiles)
 }
 
-// GET profile by personalia ID
-func getProfileByPersonaliaID(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	vars := mux.Vars(r)
-	personaliaID, err := strconv.Atoi(vars["personaliaId"])
+// getProfileByID mengambil item profile berdasarkan ID beserta relasi terkait
+func getProfileByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid personalia ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID profile tidak valid"})
 		return
 	}
 
-	var p Profile
-	err = db.QueryRow(`
-		SELECT p.id, p.name, p.email, p.phone, p.address, p.education_id, p.experience_id, p.personalia_id
-		FROM profile p 
-		WHERE p.personalia_id = ?
-	`, personaliaID).Scan(&p.ID, &p.Name, &p.Email, &p.Phone, &p.Address, &p.EducationID, &p.ExperienceID, &p.PersonaliaID)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Profile not found for this personalia", http.StatusNotFound)
+	var item Profile
+	// Menggunakan Preload untuk memuat relasi
+	if result := db.Preload(clause.Associations).First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Data profile tidak ditemukan"})
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("Error saat mengambil profile dengan ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data profile", "details": result.Error.Error()})
 		}
 		return
 	}
 
-	// Load related data
-	if p.EducationID != nil {
-		p.Education = getEducationByID(*p.EducationID)
+	// Mengisi field Name dan NIP transient dari data Personalials yang dimuat
+	if len(item.Personalials) > 0 {
+		item.NIP = item.Personalials[0].NIP
+		// Jika nama ada di PersonaliaPartial, ambil juga:
+		// item.Name = item.Personalials[0].Name // Contoh
+		item.Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
+	} else {
+		item.NIP = "N/A"
+		item.Name = "Nama Pegawai Tidak Diketahui"
 	}
-	if p.ExperienceID != nil {
-		p.Experience = getExperienceByID(*p.ExperienceID)
-	}
-	p.Personalia = getPersonaliaByID(p.PersonaliaID)
 
-	json.NewEncoder(w).Encode(p)
+	c.JSON(http.StatusOK, item)
 }
 
-// POST create profile
-func createProfile(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	var req CreateProfileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+// createProfile menambahkan item profile baru ke database beserta relasi terkait
+func createProfile(c *gin.Context) {
+	var newItem Profile
+	if err := c.ShouldBindJSON(&newItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
 		return
 	}
 
-	// Start transaction
-	tx, err := db.Begin()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback()
-
-	// Insert profile
-	result, err := tx.Exec(`
-		INSERT INTO profile (name, email, phone, address, education_id, experience_id, personalia_id) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, req.Name, req.Email, req.Phone, req.Address, req.EducationID, req.ExperienceID, req.PersonaliaID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Validasi sederhana
+	if newItem.Email == "" || newItem.Address == "" || newItem.PhoneNumber == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (email, address, phoneNumber) wajib diisi"})
 		return
 	}
 
-	profileID, err := result.LastInsertId()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Jika profile_id di database auto-increment, atur ke 0
+	newItem.ProfileID = 0
+
+	// *** Penanganan Relasi Education, Experience, dan Personalia saat Create:
+	// Jika frontend mengirim data lengkap untuk Education atau Experience baru:
+	// GORM dapat menyimpan relasi One-to-One secara otomatis jika objek Education/Experience lengkap disertakan.
+	// Contoh: newItem.Education = &models.Education{Degree: "S1", ...}
+	// Namun, skema frontend Anda tidak menyertakan detail Education/Experience saat membuat profil.
+
+	// Jika frontend mengirim ProfileID untuk menautkan ke Personalia yang sudah ada:
+	// Ini agak terbalik dari relasi DB (Personalia punya ProfileID).
+	// Biasanya, saat membuat Personalia, Anda menautkannya ke Profile.
+	// Jika Anda membuat Profile duluan, Anda perlu cara untuk menautkannya ke Personalia nanti.
+	// Atau, alur kerjanya adalah membuat Personalia (termasuk menautkannya ke Profile) via endpoint Personalia.
+
+	// Implementasi penautan/pembuatan relasi saat create/update Profile memerlukan logika tambahan
+	// sesuai dengan alur kerja frontend dan struktur data yang dikirim.
+	// Untuk kesederhanaan, contoh ini hanya menyimpan data Profile utama.
+
+	// Menggunakan GORM untuk membuat data profile (dan relasi One-to-One jika objek lengkap disertakan)
+	if result := db.Create(&newItem); result.Error != nil {
+		log.Printf("Error saat menambahkan profile: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menambahkan item profile", "details": result.Error.Error()})
 		return
 	}
 
-	// Update personalia with profile_id
-	_, err = tx.Exec(`UPDATE personalia SET profile_id = ? WHERE id = ?`, profileID, req.PersonaliaID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Muat ulang item dengan relasi yang sudah disimpan untuk respons
+	var createdItem Profile
+	db.Preload(clause.Associations).First(&createdItem, newItem.ProfileID)
+	// Isi field transient Name dan NIP
+	if len(createdItem.Personalials) > 0 {
+		createdItem.NIP = createdItem.Personalials[0].NIP
+		createdItem.Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
+	} else {
+		createdItem.NIP = "N/A"
+		createdItem.Name = "Nama Pegawai Tidak Diketahui"
 	}
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Profile created successfully",
-		"id":      profileID,
-	})
+	c.JSON(http.StatusCreated, createdItem) // Kirim kembali item yang baru ditambahkan
 }
 
-// PUT update profile
-func updateProfile(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+// updateProfile memperbarui item profile di database beserta relasi terkait
+func updateProfile(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid profile ID", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID profile tidak valid"})
 		return
 	}
 
-	var req UpdateProfileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	var updatedItem Profile
+	if err := c.ShouldBindJSON(&updatedItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
 		return
 	}
 
-	_, err = db.Exec(`
-		UPDATE profile 
-		SET name = ?, email = ?, phone = ?, address = ?, education_id = ?, experience_id = ? 
-		WHERE id = ?
-	`, req.Name, req.Email, req.Phone, req.Address, req.EducationID, req.ExperienceID, id)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Validasi sederhana
+	if updatedItem.Email == "" || updatedItem.Address == "" || updatedItem.PhoneNumber == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (email, address, phoneNumber) wajib diisi"})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{"message": "Profile updated successfully"})
-}
-
-// DELETE profile
-func deleteProfile(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid profile ID", http.StatusBadRequest)
-		return
-	}
-
-	// Start transaction
-	tx, err := db.Begin()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback()
-
-	// Get personalia_id before deleting profile
-	var personaliaID int
-	err = tx.QueryRow(`SELECT personalia_id FROM profile WHERE id = ?`, id).Scan(&personaliaID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Update personalia to remove profile_id reference
-	_, err = tx.Exec(`UPDATE personalia SET profile_id = NULL WHERE id = ?`, personaliaID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Delete profile
-	_, err = tx.Exec(`DELETE FROM profile WHERE id = ?`, id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]string{"message": "Profile deleted successfully"})
-}
-
-// Education endpoints
-func getAllEducations(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	rows, err := db.Query(`SELECT id, degree, university, year FROM education`)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var educations []Education
-	for rows.Next() {
-		var e Education
-		err := rows.Scan(&e.ID, &e.Degree, &e.University, &e.Year)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+	// Cari item yang ada berdasarkan ID (primary key), preload relasi
+	var item Profile
+	if result := db.Preload(clause.Associations).First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Item profile tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mencari profile dengan ID %d untuk diperbarui: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item profile", "details": result.Error.Error()})
 		}
-		educations = append(educations, e)
+		return
 	}
 
-	json.NewEncoder(w).Encode(educations)
+	// Update field dasar item yang ada
+	item.Email = updatedItem.Email
+	item.Address = updatedItem.Address
+	item.PhoneNumber = updatedItem.PhoneNumber
+	// Update foreign key jika ada (EducationID, ExperienceID)
+
+	// *** Penanganan Relasi Education, Experience, dan Personalia saat Update:
+	// Mengupdate relasi One-to-One (Education, Experience) dari data frontend yang diterima
+	// memerlukan logika tambahan. Jika frontend mengirim data lengkap, Anda bisa menggunakan:
+	// db.Model(&item).Association("Education").Replace(updatedItem.Education) // Mengganti Education
+	// db.Model(&item).Association("Experience").Replace(updatedItem.Experience) // Mengganti Experience
+
+	// Mengupdate relasi ke Personalia (biasanya dikelola dari sisi Personalia).
+	// Jika Anda ingin mengubah Personalia yang terkait dengan Profile ini,
+	// ini mungkin memerlukan endpoint terpisah atau logika kompleks.
+
+	// Menggunakan GORM untuk menyimpan perubahan pada Profile utama
+	if result := db.Save(&item); result.Error != nil {
+		log.Printf("Error saat memperbarui profile dengan ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui item profile", "details": result.Error.Error()})
+		return
+	}
+
+	// Muat ulang item dengan relasi untuk respons (jika update relasi dilakukan)
+	var savedItem Profile
+	db.Preload(clause.Associations).First(&savedItem, item.ProfileID)
+	// Isi field transient Name dan NIP
+	if len(savedItem.Personalials) > 0 {
+		savedItem.NIP = savedItem.Personalials[0].NIP
+		savedItem.Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
+	} else {
+		savedItem.NIP = "N/A"
+		savedItem.Name = "Nama Pegawai Tidak Diketahui"
+	}
+
+	c.JSON(http.StatusOK, savedItem) // Kirim kembali item yang diperbarui
 }
 
-func createEducation(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	var req CreateEducationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	result, err := db.Exec(`INSERT INTO education (degree, university, year) VALUES (?, ?, ?)`,
-		req.Degree, req.University, req.Year)
+// deleteProfile menghapus item profile dari database
+func deleteProfile(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID profile tidak valid"})
 		return
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Education created successfully",
-		"id":      id,
-	})
-}
-
-// Experience endpoints
-func getAllExperiences(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	rows, err := db.Query(`SELECT id, position, period FROM experience`)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var experiences []Experience
-	for rows.Next() {
-		var e Experience
-		err := rows.Scan(&e.ID, &e.Position, &e.Period)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+	// Cari item yang akan dihapus
+	var item Profile
+	if result := db.Preload(clause.Associations).First(&item, id); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Item profile tidak ditemukan"})
+		} else {
+			log.Printf("Error saat mencari profile dengan ID %d untuk dihapus: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item profile", "details": result.Error.Error()})
 		}
-		experiences = append(experiences, e)
-	}
-
-	json.NewEncoder(w).Encode(experiences)
-}
-
-func createExperience(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	w.Header().Set("Content-Type", "application/json")
-
-	var req CreateExperienceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	result, err := db.Exec(`INSERT INTO experience (position, period) VALUES (?, ?)`,
-		req.Position, req.Period)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// *** Penanganan Relasi Education, Experience, dan Personalia saat Delete:
+	// Menghapus Profile tidak otomatis menghapus Education, Experience, atau menata ulang Personalia terkait.
+	// Jika Anda ingin menghapus Education/Experience terkait, Anda perlu melakukannya secara manual
+	// atau mengatur OnDelete:Cascade pada foreign key di tabel Profile.
+	// Untuk Personalia, Anda perlu memutuskan apa yang terjadi (set ProfileID jadi NULL, hapus Personalia, dll.)
+
+	// Menggunakan GORM untuk menghapus data Profile
+	if result := db.Delete(&item); result.Error != nil {
+		log.Printf("Error saat menghapus profile dengan ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus item profile", "details": result.Error.Error()})
 		return
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "Experience created successfully",
-		"id":      id,
-	})
-}
-
-// Helper functions
-func getEducationByID(id int) *Education {
-	var e Education
-	err := db.QueryRow(`SELECT id, degree, university, year FROM education WHERE id = ?`, id).
-		Scan(&e.ID, &e.Degree, &e.University, &e.Year)
-	if err != nil {
-		return nil
-	}
-	return &e
-}
-
-func getExperienceByID(id int) *Experience {
-	var e Experience
-	err := db.QueryRow(`SELECT id, position, period FROM experience WHERE id = ?`, id).
-		Scan(&e.ID, &e.Position, &e.Period)
-	if err != nil {
-		return nil
-	}
-	return &e
-}
-
-func getPersonaliaByID(id int) *Personalia {
-	var p Personalia
-	err := db.QueryRow(`
-		SELECT id, name, nip, jabatan, divisi, lokasi, join_date, phone_number, project_number, profile_id 
-		FROM personalia WHERE id = ?
-	`, id).Scan(&p.ID, &p.Name, &p.NIP, &p.Jabatan, &p.Divisi, &p.Lokasi, &p.JoinDate, &p.PhoneNumber, &p.ProjectNumber, &p.ProfileID)
-	if err != nil {
-		return nil
-	}
-	return &p
+	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
 
 func main() {
-	initDB()
-	defer db.Close()
+	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
 
-	r := mux.NewRouter()
-	r.Use(corsMiddleware)
+	r := gin.Default() // Inisialisasi Gin router
 
-	// Profile routes
-	r.HandleFunc("/api/profiles", getAllProfiles).Methods("GET")
-	r.HandleFunc("/api/profiles/{id}", getProfileByID).Methods("GET")
-	r.HandleFunc("/api/profiles/personalia/{personaliaId}", getProfileByPersonaliaID).Methods("GET")
-	r.HandleFunc("/api/profiles", createProfile).Methods("POST")
-	r.HandleFunc("/api/profiles/{id}", updateProfile).Methods("PUT")
-	r.HandleFunc("/api/profiles/{id}", deleteProfile).Methods("DELETE")
+	// Konfigurasi Middleware CORS
+	// SESUAIKAN INI UNTUK PRODUCTION!
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
+	r.Use(cors.New(config))
 
-	// Education routes
-	r.HandleFunc("/api/educations", getAllEducations).Methods("GET")
-	r.HandleFunc("/api/educations", createEducation).Methods("POST")
+	// Definisikan endpoint API untuk Profile
+	api := r.Group("/api/profile") // Menggunakan path /api/profile
+	{
+		api.GET("/", getAllProfiles)      // GET /api/profile/
+		api.GET("/:id", getProfileByID)   // GET /api/profile/:id
+		api.POST("/", createProfile)      // POST /api/profile/
+		api.PUT("/:id", updateProfile)    // PUT /api/profile/:id
+		api.DELETE("/:id", deleteProfile) // DELETE /api/profile/:id
 
-	// Experience routes
-	r.HandleFunc("/api/experiences", getAllExperiences).Methods("GET")
-	r.HandleFunc("/api/experiences", createExperience).Methods("POST")
+		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk mengelola:
+		// - Data Education dan Experience secara individual
+		// - Penautan Profile dengan Personalia (jika tidak dikelola sepenuhnya via endpoint Personalia)
+	}
 
-	fmt.Println("Server running on :8080")
-	fmt.Println("Profile API endpoints:")
-	fmt.Println("GET    /api/profiles                    - Get all profiles")
-	fmt.Println("GET    /api/profiles/{id}              - Get profile by ID")
-	fmt.Println("GET    /api/profiles/personalia/{id}   - Get profile by personalia ID")
-	fmt.Println("POST   /api/profiles                    - Create new profile")
-	fmt.Println("PUT    /api/profiles/{id}              - Update profile")
-	fmt.Println("DELETE /api/profiles/{id}              - Delete profile")
-	fmt.Println("GET    /api/educations                  - Get all educations")
-	fmt.Println("POST   /api/educations                  - Create education")
-	fmt.Println("GET    /api/experiences                 - Get all experiences")
-	fmt.Println("POST   /api/experiences                 - Create experience")
-
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Println("Server berjalan di http://localhost:8080")
+	log.Fatal(r.Run(":8080")) // Jalankan server
 }
