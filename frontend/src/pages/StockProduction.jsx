@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import { 
   Box, 
   Typography, 
@@ -32,71 +33,43 @@ const StockProduction = () => {
   const [activeCard, setActiveCard] = React.useState(null);
   const [lastRefreshed, setLastRefreshed] = React.useState(new Date());
   
-  const productionData = [
-    { 
-      title: "Overhaul Point Machine", 
-      progress: 65, 
-      note: "Custom",
-      details: "Pengerjaan rutin maintenance point machine",
-      trend: "up",
-      alerts: 2
-    },
-    { 
-      title: "Stock Production", 
-      progress: 78, 
-      note: "Custom",
-      details: "Manajemen stock untuk produksi harian",
-      trend: "up",
-      alerts: 1
-    },
-    { 
-      title: "RingKasan Produksi", 
-      progress: 75, 
-      note: "Total Progress: 75%",
-      subNote: "Note: V2B progress actuals are not actual locations in data collected and cannot detect remote.",
-      trend: "steady",
-      alerts: 0
-    },
-    { 
-      title: "Produksi Radio Lokomotif", 
-      progress: 81, 
-      note: "Custom",
-      details: "Produksi komponen radio untuk lokomotif",
-      trend: "up",
-      alerts: 3
-    },
-    { 
-      title: "Personalia", 
-      progress: 92, 
-      note: "Custom",
-      details: "Pengelolaan SDM produksi",
-      trend: "down",
-      alerts: 0
-    },
-    { 
-      title: "Products! Way Station", 
-      progress: 63, 
-      note: "Custom",
-      details: "Produksi komponen way station",
-      trend: "steady",
-      alerts: 1
-    },
-    { 
-      title: "Quality Control", 
-      progress: 81, 
-      note: "Custom",
-      details: "Quality control produk akhir",
-      trend: "up",
-      alerts: 0
-    }
-  ];
+  const [productionData, setProductionData] = React.useState([]);
+const [loading, setLoading] = React.useState(true);
+
+React.useEffect(() => {
+  axios.get('/api/stockproduction/')
+    .then((res) => {
+      console.log("API RESPONSE:", res.data); 
+      console.log("RESPONSE TYPE:", typeof res.data); // ⬅️ penting!
+      console.log("RESPONSE RAW:", res.data);   // Tambahkan ini
+       if (Array.isArray(res.data)) {
+        setProductionData(res.data);
+      } else {
+        console.error("❌ Bukan array! Data:", res.data);
+        setProductionData([]); // fallback aman
+      }
+    }) // Pastikan ini array
+    .catch((err) => {
+      console.error("Gagal mengambil data produksi:", err);
+      setProductionData([]); // fallback biar nggak error
+    })
+    .finally(() => {
+      setLoading(false);
+      setLastRefreshed(new Date());
+    });
+}, []);
+
 
   // Filter data for the table as requested
-  const tabulasiData = productionData.filter(item => 
-    item.title === "Stock Production" || 
-    item.title === "Overhaul Point Machine" || 
-    item.title === "Produksi Radio Lokomotif"
-  );
+ const tabulasiData = Array.isArray(productionData)
+  ? productionData.filter(item =>
+      item.title === "Stock Production" || 
+      item.title === "Overhaul Point Machine" || 
+      item.title === "Produksi Radio Lokomotif"
+    )
+  : [];
+
+
 
   const recentActivities = [
     { id: 1, action: "Product Tertinggi: Personalis", time: "5 menit lalu", status: "completed" },
@@ -116,6 +89,24 @@ const StockProduction = () => {
     if (progress >= 50) return '#FFC107'; // Amber
     return '#F44336'; // Red
   };
+  if (loading) {
+  return (
+    <Box sx={{ 
+      p: 5, 
+      minHeight: '100vh', 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center',
+      flexDirection: 'column',
+      gap: 2
+    }}>
+      <LinearProgress sx={{ width: '100%' }} />
+      <Typography variant="body2" color="text.secondary">Memuat data Stock Production...</Typography>
+    </Box>
+  );
+}
+
+
 
   return (
     <Box sx={{ p: 3, backgroundColor: '#f5f7fa', minHeight: '100vh' }}>

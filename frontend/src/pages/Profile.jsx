@@ -1,5 +1,7 @@
 // src/pages/Profile.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 import {
   Box, Typography, Avatar, Card, CardContent, Divider, List,
   ListItemIcon, ListItemText, Paper, Stack, alpha, useTheme, Grid, TextField, Button
@@ -9,6 +11,7 @@ import {
 } from '@mui/icons-material';
 
 const Profile = () => {
+
   const theme = useTheme();
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState({
@@ -18,7 +21,15 @@ const Profile = () => {
     phoneNumber: '0812-3456-7890', // Hanya satu nomor telepon
     address: 'Jl. Stasiun Timur No. 12, Bandung, Jawa Barat'
   });
-
+ useEffect(() => {
+  axios.get('/api/profile')
+    .then((res) => {
+      setProfileData(res.data);
+    })
+    .catch((err) => {
+      console.error("Gagal mengambil data profil:", err);
+    });
+}, []);
   // Handle changes in the editable form fields
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -30,12 +41,21 @@ const Profile = () => {
 
   // Toggle edit mode and save changes
   const handleEditSaveToggle = () => {
-    setEditMode(!editMode);
-    // In a real application, you would send profileData to a backend here if editMode is being turned off
-    if (editMode) {
-      console.log('Saving profile data:', profileData);
-    }
-  };
+  if (editMode) {
+    // mode edit sedang aktif → sekarang kita mau simpan
+    axios.put('/api/profile', profileData)
+      .then(() => {
+        console.log('Data berhasil disimpan ke server!');
+        setEditMode(false);
+      })
+      .catch((err) => {
+        console.error('Gagal menyimpan data:', err);
+      });
+  } else {
+    // belum mode edit → aktifkan edit mode
+    setEditMode(true);
+  }
+};
 
   const recentActivities = [
     { id: 1, icon: <Event />, text: 'Updated production schedule', time: '2 hours ago' },

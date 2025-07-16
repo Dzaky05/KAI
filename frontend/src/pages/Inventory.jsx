@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react'; // Import useEffect dan useMemo
 import {
   Box, Typography, Card, CardContent, Grid, TextField,
   Button, IconButton, InputLabel, MenuItem, FormControl,
@@ -15,42 +16,87 @@ import {
 import InventoryIcon from '@mui/icons-material/Inventory2';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import autoTable from 'jspdf-autotable'; // Perbaikan typo: autotable
 
 export default function Inventory() {
   const theme = useTheme();
 
-  const [inventoryData, setInventoryData] = useState([
-    { id: 1, name: "Rel Kereta", quantity: 50, location: "Gudang A", status: "Tersedia", itemCode: "INV-GDA-0001" },
-    { id: 2, name: "Radio Lokomotif ", quantity: 6, location: "Gudang B", status: "Tersedia", itemCode: "INV-GDB-0002" },
-    { id: 3, name: "Panel Kontrol", quantity: 25, location: "Gudang C", status: "Limit", itemCode: "INV-GDC-0003" },
-    { id: 4, name: "Kabel Serat Optik", quantity: 50, location: "Gudang A", status: "Diproduksi", itemCode: "INV-GDA-0004" },
-    { id: 5, name: "Bantalan Beton", quantity: 25, location: "Gudang D", status: "Perbaikan", itemCode: "INV-GDD-0005" },
-    { id: 6, name: "Komponen Rem", quantity: 7, location: "Gudang E", status: "Limit", itemCode: "INV-GDE-0006" },
-    { id: 7, name: "Sistem Persinyalan", quantity: 10, location: "Gudang F", status: "Perbaikan", itemCode: "INV-GDF-0007" },
-  ]);
+  // Mengganti data statis dengan state yang akan diisi dari backend
+  const [inventoryData, setInventoryData] = useState([]);
   const [search, setSearch] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [openDrawer, setOpenDrawer] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [currentItem, setCurrentItem] = useState({ id: null, name: '', quantity: '', location: '', status: '', itemCode: '' });
+  // Menyesuaikan state awal currentItem dengan field database/backend
+  const [currentItem, setCurrentItem] = useState({ id: null, name: '', quantity: '', location: '', status: '', itemCode: '' }); // ID sekarang merujuk ke ID database (int)
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [itemToDeleteId, setItemToDeleteId] = useState(null);
   const [itemToDeleteName, setItemToDeleteName] = useState('');
+  const [loading, setLoading] = useState(true); // State untuk indikator loading saat fetch data
+  const [error, setError] = useState(null); // State untuk menangani error fetch
 
-  const filteredData = inventoryData.filter(item =>
-    item.name.toLowerCase().includes(search.toLowerCase()) ||
-    item.location.toLowerCase().includes(search.toLowerCase()) ||
-    item.status.toLowerCase().includes(search.toLowerCase()) ||
-    item.itemCode.toLowerCase().includes(search.toLowerCase())
-  );
+
+  // URL endpoint backend Go Anda
+  const API_URL = 'http://localhost:8080/api/inventory'; // Ganti jika backend berjalan di URL/port lain
+
+  // Fungsi untuk mengambil data dari backend
+  const fetchInventory = async () => {
+    setLoading(true); // Set loading menjadi true
+    setError(null); // Reset error
+    try {
+      const response = await fetch(API_URL);
+      if (!response.ok) {
+        // Tangani error jika response tidak OK (misal status 404, 500)
+        const errorData = await response.json(); // Coba parse error message dari backend
+        throw new Error(`Failed to fetch data: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
+      }
+      const data = await response.json();
+      // Sesuaikan format data dari backend jika perlu sebelum menyimpannya di state
+      // Misalnya, jika backend mengembalikan ID sebagai field `ProduksiID` atau `QcID`,
+      // Anda perlu memetakan itu ke field `id` di state React Anda.
+      // Berdasarkan kode Go sebelumnya, field ID di backend adalah `InventoryID` (int) dan JSON tagnya `id`.
+      // Jadi, mapping seharusnya langsung cocok.
+      setInventoryData(data); // Simpan data yang diterima di state
+    } catch (err) {
+      console.error("Error fetching inventory:", err);
+      setError(err); // Simpan error di state
+      setSnackbar({ open: true, message: `Gagal memuat data: ${err.message}`, severity: 'error' });
+    } finally {
+      setLoading(false); // Set loading menjadi false setelah selesai (baik sukses maupun error)
+    }
+  };
+
+  // Ambil data dari backend saat komponen pertama kali dimuat
+  useEffect(() => {
+    fetchInventory();
+  }, []); // Dependency array kosong berarti efek ini hanya dijalankan sekali saat mount
+
+  // Memoized data untuk filtering agar tidak dihitung ulang setiap render jika data tidak berubah
+  const filteredData = useMemo(() => {
+    return inventoryData.filter(item =>
+      item.name.toLowerCase().includes(search.toLowerCase()) ||
+      item.location.toLowerCase().includes(search.toLowerCase()) ||
+      item.status.toLowerCase().includes(search.toLowerCase()) ||
+      (item.itemCode && item.itemCode.toLowerCase().includes(search.toLowerCase())) // Periksa itemCode sebelum toLowerCase
+    );
+  }, [inventoryData, search]);
+
 
   const handleOpenDrawer = (item = null) => {
     if (item) {
       setEditMode(true);
-      setCurrentItem(item);
+      // Pastikan currentItem memiliki struktur yang sesuai dengan data dari backend
+      setCurrentItem({
+        id: item.id, // Menggunakan id dari data backend
+        name: item.name || '',
+        quantity: item.quantity || '', // Quantity dari backend (int), di sini string untuk TextField
+        location: item.location || '',
+        status: item.status || '',
+        itemCode: item.itemCode || ''
+      });
     } else {
       setEditMode(false);
+      // State awal untuk item baru
       setCurrentItem({ id: null, name: '', quantity: '', location: '', status: 'Tersedia', itemCode: '' });
     }
     setOpenDrawer(true);
@@ -58,6 +104,8 @@ export default function Inventory() {
 
   const handleCloseDrawer = () => {
     setOpenDrawer(false);
+     // Reset currentItem saat drawer ditutup
+    setCurrentItem({ id: null, name: '', quantity: '', location: '', status: 'Tersedia', itemCode: '' });
   };
 
   const handleChange = (e) => {
@@ -65,44 +113,112 @@ export default function Inventory() {
     setCurrentItem(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = () => {
-    if (!currentItem.name || !currentItem.quantity || !currentItem.location || !currentItem.status || !currentItem.itemCode) {
+  // Mengubah handleSave menjadi async untuk mengirim data ke backend
+  const handleSave = async () => {
+    if (!currentItem.name || currentItem.quantity === '' || !currentItem.location || !currentItem.status || !currentItem.itemCode) {
       setSnackbar({ open: true, message: 'Semua kolom wajib diisi!', severity: 'error' });
       return;
     }
 
-    if (editMode) {
-      setInventoryData(prev => prev.map(item =>
-        item.id === currentItem.id ? { ...currentItem, quantity: Number(currentItem.quantity) } : item
-      ));
-      setSnackbar({ open: true, message: 'Data item berhasil diperbarui!', severity: 'success' });
-    } else {
-      const newId = inventoryData.length ? Math.max(...inventoryData.map(d => d.id)) + 1 : 1;
-      setInventoryData(prev => [...prev, { ...currentItem, id: newId, quantity: Number(currentItem.quantity) }]);
-      setSnackbar({ open: true, message: 'Item berhasil ditambahkan!', severity: 'success' });
+    // Persiapkan data yang akan dikirim ke backend
+    const itemToSave = {
+      // Jangan sertakan ID jika mode tambah, backend akan membuatnya
+      // Jika mode edit, sertakan ID di URL, bukan di body request (sesuai implementasi backend Go)
+      name: currentItem.name,
+      quantity: Number(currentItem.quantity), // Pastikan quantity adalah angka
+      location: currentItem.location,
+      status: currentItem.status,
+      itemCode: currentItem.itemCode,
+    };
+
+    try {
+      let response;
+      let successMessage;
+      let method;
+      let url;
+
+      if (editMode) {
+        // Mode edit: Lakukan permintaan PUT
+        method = 'PUT';
+        url = `${API_URL}/${currentItem.id}`; // Tambahkan ID di URL
+        successMessage = 'Data item berhasil diperbarui!';
+      } else {
+        // Mode tambah: Lakukan permintaan POST
+        method = 'POST';
+        url = API_URL;
+        successMessage = 'Item berhasil ditambahkan!';
+      }
+
+      response = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          // Tambahkan header Authorization jika diperlukan
+        },
+        body: JSON.stringify(itemToSave), // Kirim data sebagai JSON string
+      });
+
+      if (!response.ok) {
+        // Tangani error dari backend
+        const errorData = await response.json();
+        throw new Error(`Failed to save data: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
+      }
+
+      const savedItem = await response.json(); // Ambil data yang disimpan dari respons backend
+
+      // Perbarui state berdasarkan respons backend
+      if (editMode) {
+        // Jika mode edit, perbarui item yang bersangkutan di state
+        setInventoryData(prev => prev.map(item =>
+           // ID dari backend adalah item.id
+          item.id === savedItem.id ? savedItem : item
+        ));
+      } else {
+        // Jika mode tambah, tambahkan item baru dari respons backend ke state
+        // Backend Go mengembalikan item yang baru dibuat dengan ID yang sudah terisi
+        setInventoryData(prev => [...prev, savedItem]);
+      }
+
+      setSnackbar({ open: true, message: successMessage, severity: 'success' });
+      handleCloseDrawer(); // Tutup drawer setelah berhasil
+
+    } catch (err) {
+      console.error("Error saving inventory item:", err);
+      setSnackbar({ open: true, message: `Gagal menyimpan data: ${err.message}`, severity: 'error' });
     }
-    handleCloseDrawer();
   };
 
-  const handleDeleteClick = (item) => {
-    setItemToDeleteId(item.id);
-    setItemToDeleteName(item.name);
-    setOpenConfirmDialog(true);
+  // Mengubah handleConfirmDelete menjadi async untuk mengirim permintaan DELETE ke backend
+  const handleConfirmDelete = async () => {
+    if (itemToDeleteId === null) return; // Pastikan ada item yang akan dihapus
+
+    try {
+      const response = await fetch(`${API_URL}/${itemToDeleteId}`, {
+        method: 'DELETE',
+        // Tambahkan header Authorization jika diperlukan
+      });
+
+      if (!response.ok) {
+         const errorData = await response.json();
+         throw new Error(`Failed to delete data: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
+      }
+
+      // Jika berhasil (status 204 No Content), perbarui state dengan menghapus item
+      setInventoryData(prev => prev.filter(item => item.id !== itemToDeleteId));
+
+      setSnackbar({ open: true, message: `Item '${itemToDeleteName}' berhasil dihapus!`, severity: 'info' });
+
+    } catch (err) {
+      console.error("Error deleting inventory item:", err);
+       setSnackbar({ open: true, message: `Gagal menghapus data: ${err.message}`, severity: 'error' });
+    } finally {
+      // Tutup dialog konfirmasi dan reset state itemToDeleteId/Name
+      setOpenConfirmDialog(false);
+      setItemToDeleteId(null);
+      setItemToDeleteName('');
+    }
   };
 
-  const handleConfirmDelete = () => {
-    setInventoryData(prev => prev.filter(item => item.id !== itemToDeleteId));
-    setSnackbar({ open: true, message: `Item '${itemToDeleteName}' berhasil dihapus!`, severity: 'info' });
-    setOpenConfirmDialog(false);
-    setItemToDeleteId(null);
-    setItemToDeleteName('');
-  };
-
-  const handleCloseConfirmDialog = () => {
-    setOpenConfirmDialog(false);
-    setItemToDeleteId(null);
-    setItemToDeleteName('');
-  };
 
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(inventoryData.map(item => ({
@@ -163,8 +279,18 @@ export default function Inventory() {
 
   // item dengan yang paling banyak kuantitasnya
   const mostQuantityItem = inventoryData.reduce((prev, current) => {
-    return (prev.quantity > current.quantity) ? prev : current;
+    return (prev && current && prev.quantity !== undefined && current.quantity !== undefined && prev.quantity > current.quantity) ? prev : current;
   }, { name: 'N/A', quantity: 0 });
+
+
+    // Tampilkan pesan loading atau error
+    if (loading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Typography>Memuat data...</Typography></Box>;
+    }
+
+    if (error && inventoryData.length === 0) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'error.main' }}><Typography>Gagal memuat data. {error.message}</Typography></Box>;
+    }
 
 
   return (
@@ -265,6 +391,15 @@ export default function Inventory() {
         <Box display="flex" gap={1} flexWrap="wrap">
           <Button variant="outlined" startIcon={<Download />} onClick={exportExcel}>Excel</Button>
           <Button variant="outlined" startIcon={<Download />} onClick={exportPDF}>PDF</Button>
+           {/* Tombol Tambah Item */}
+            <Button
+                variant="contained"
+                startIcon={<Add />}
+                sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
+                onClick={() => handleOpenDrawer()} // Membuka drawer untuk menambah baru
+            >
+                Tambah Item
+            </Button>
         </Box>
       </Box>
 
@@ -282,7 +417,7 @@ export default function Inventory() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredData.length === 0 ? (
+            {filteredData.length === 0 && !loading ? ( // Tampilkan pesan jika tidak ada data dan tidak loading
               <TableRow>
                 <TableCell colSpan={6} align="center">Tidak ada item inventory ditemukan.</TableCell>
               </TableRow>
@@ -301,11 +436,18 @@ export default function Inventory() {
                       <IconButton onClick={() => handleOpenDrawer(item)}><Edit color="primary" /></IconButton>
                     </Tooltip>
                     <Tooltip title="Hapus">
+                      {/* Menggunakan item.id dari data backend untuk penghapusan */}
                       <IconButton onClick={() => handleDeleteClick(item)}><Delete color="error" /></IconButton>
                     </Tooltip>
                   </TableCell>
                 </TableRow>
               ))
+            )}
+            {/* Tambahkan indikator loading di dalam tabel jika loading */}
+            {loading && (
+                 <TableRow>
+                    <TableCell colSpan={6} align="center">Memuat...</TableCell>
+                 </TableRow>
             )}
             <TableRow>
               <TableCell colSpan={5} align="right" sx={{ fontWeight: 'bold' }}>Jumlah Barang :</TableCell>
@@ -408,7 +550,7 @@ export default function Inventory() {
                 variant="contained"
                 sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' }, mt: 2 }}
                 fullWidth
-                onClick={handleSave}
+                onClick={handleSave} // Memanggil fungsi handleSave yang sudah async
               >
                 {editMode ? 'Perbarui Data' : 'Tambah Data'}
               </Button>

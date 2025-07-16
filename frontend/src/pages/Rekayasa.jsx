@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import LinearProgress from '@mui/material/LinearProgress';
 import {
   Box, Typography, Card, CardContent, Grid, List, ListItem, ListItemText, Divider, Button, Avatar, Chip,
@@ -6,32 +7,6 @@ import {
 } from "@mui/material";
 import { Build as BuildIcon, Add, Code, Engineering, Settings, BarChart, Assignment, Handyman } from "@mui/icons-material"; // Added icons
 
-const projects = [
-  {
-    id: 1,
-    name: "Pengembangan Sistem Kontrol",
-    status: "Dalam Pengerjaan",
-    team: ["BS", "AW", "CD"],
-    deadline: "2023-12-31",
-    progress: 65
-  },
-  {
-    id: 2,
-    name: "Optimasi Produksi",
-    status: "Selesai",
-    team: ["DP", "ES"],
-    deadline: "2023-10-15",
-    progress: 100
-  },
-  {
-    id: 3,
-    name: "Desain Komponen Baru",
-    status: "Perencanaan",
-    team: ["BS", "ES"],
-    deadline: "2024-02-28",
-    progress: 15
-  },
-];
 
 // Helper function for TabPanel
 function TabPanel(props) {
@@ -63,6 +38,26 @@ function a11yProps(index) {
 
 export default function Rekayasa() {
   const [value, setValue] = useState(0);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+  axios.get('/api/qc/rekayasa')
+    .then((res) => {
+      const data = res.data;
+      if (Array.isArray(data)) {
+        setProjects(data);
+      } else {
+        console.warn('Data dari API bukan array:', data);
+        setProjects([]); // fallback biar aman
+      }
+    })
+    .catch((err) => {
+      console.error('Gagal fetch data:', err);
+      setProjects([]);
+    })
+    .finally(() => setLoading(false));
+}, []);
 
   const handleChange = (event, newValue) => {
     setValue(newValue);

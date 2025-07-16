@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import axios from 'axios' ;
 import {
   Box,
   Typography,
@@ -58,15 +59,17 @@ const initialData = {
     { id: "OVH-001", product: "Point Machine A", batch: "BATCH-2023-09", status: "Tidak Lulus", tested: 20, passed: 15, date: "2023-09-20", department: "Overhaul" },
     { id: "OVH-002", product: "Point Machine B", batch: "BATCH-2023-10", status: "Lulus", tested: 18, passed: 18, date: "2023-10-15", department: "Overhaul" },
   ],
-  engineering: [
-    { id: "ENG-001", product: "Control Panel", batch: "BATCH-2023-11", status: "Lulus", tested: 10, passed: 9, date: "2023-11-08", department: "Engineering" },
-    { id: "ENG-002", product: "Signal System", batch: "BATCH-2023-10", status: "Dalam Proses", tested: 12, passed: 10, date: "2023-10-30", department: "Engineering" },
+  rekayasa: [
+    { id: "RKY-001", product: "Control Panel", batch: "BATCH-2023-11", status: "Lulus", tested: 10, passed: 9, date: "2023-11-08", department: "Rekayasa" },
+    { id: "RKY-002", product: "Signal System", batch: "BATCH-2023-10", status: "Dalam Proses", tested: 12, passed: 10, date: "2023-10-30", department: "Rekayasa" },
   ],
-  stock: [
-    { id: "STK-001", product: "Battery Pack", batch: "BATCH-2023-11", status: "Lulus", tested: 50, passed: 48, date: "2023-11-10", department: "Stock" },
-    { id: "STK-002", product: "Cable Set", batch: "BATCH-2023-09", status: "Tidak Lulus", tested: 30, passed: 25, date: "2023-09-25", department: "Stock" },
+  kalibrasi: [
+    { id: "KAL-001", product: "Battery Pack", batch: "BATCH-2023-11", status: "Lulus", tested: 50, passed: 48, date: "2023-11-10", department: "Kalibrasi" },
+    { id: "KAL-002", product: "Cable Set", batch: "BATCH-2023-09", status: "Tidak Lulus", tested: 30, passed: 25, date: "2023-09-25", department: "Kalibrasi" },
   ],
 };
+
+
 
 export default function QualityControl() {
   const [activeTab, setActiveTab] = useState('all');
@@ -92,8 +95,8 @@ export default function QualityControl() {
     return [
       ...data.production,
       ...data.overhaul,
-      ...data.engineering,
-      ...data.stock,
+      ...data.rekayasa,
+      ...data.kalibrasi,
     ];
   }, [data]);
 
@@ -102,8 +105,8 @@ export default function QualityControl() {
     switch (activeTab) {
       case 'production': return data.production;
       case 'overhaul': return data.overhaul;
-      case 'engineering': return data.engineering;
-      case 'stock': return data.stock;
+      case 'rekayasa': return data.rekayasa;
+      case 'kalibrasi': return data.kalibrasi;
       default: return allData;
     }
   }, [activeTab, data, allData]);
@@ -133,10 +136,6 @@ export default function QualityControl() {
     }
   };
 
-  // Opens the "Add New QC Entry" modal
-  const handleOpenAddModal = () => {
-    setOpenAddModal(true);
-  };
 
   // Closes the "Add New QC Entry" modal and resets the form
   const handleCloseAddModal = () => {
@@ -172,45 +171,47 @@ export default function QualityControl() {
 
   // Adds a new QC entry to the appropriate department
   const handleAddNewQc = () => {
-    const department = newQcEntry.department.toLowerCase();
-    const newId = `${department === 'production' ? 'PRD' : 
-                  department === 'overhaul' ? 'OVH' : 
-                  department === 'engineering' ? 'ENG' : 'STK'}-${String(data[department].length + 1).padStart(3, '0')}`;
-    
-    const entryToAdd = {
-      id: newId,
-      ...newQcEntry,
-      tested: parseInt(newQcEntry.tested),
-      passed: parseInt(newQcEntry.passed),
-    };
-
-    // Update the appropriate department data
-    setData(prev => ({
-      ...prev,
-      [department]: [...prev[department], entryToAdd]
-    }));
-
-    handleCloseAddModal();
+  const department = newQcEntry.department.toLowerCase();
+  const entryToAdd = {
+    ...newQcEntry,
+    tested: parseInt(newQcEntry.tested),
+    passed: parseInt(newQcEntry.passed),
   };
+
+  axios.post('/api/qc', entryToAdd)
+    .then(() => axios.get('/api/qc'))
+    .then((res) => {
+      setData(res.data);
+
+      // Bisa juga disisipkan update manual jika dibutuhkan:
+      // setData(prev => ({
+      //   ...prev,
+      //   [department]: [...prev[department], entryToAdd]
+      // }));
+
+      handleCloseAddModal();
+    })
+    .catch((err) => {
+      console.error('Gagal menambahkan data QC:', err);
+    });
+  };
+
+  
 
   // Handles sending item back to its original department for repair
   const handleSendForRepair = () => {
-    if (!selectedItem) return;
+  if (!selectedItem) return;
 
-    // Here you would typically send the item back to its original department
-    // For demonstration, we'll just update its status
-    const department = selectedItem.department.toLowerCase();
-    const updatedData = data[department].map(item => 
-      item.id === selectedItem.id ? { ...item, status: "Dalam Perbaikan" } : item
-    );
-
-    setData(prev => ({
-      ...prev,
-      [department]: updatedData
-    }));
-
-    handleCloseRepairModal();
-  };
+  axios.put(`/api/qc/${selectedItem.id}`, { status: 'Dalam Perbaikan' })
+    .then(() => axios.get('/api/qc'))
+    .then((res) => {
+      setData(res.data);
+      handleCloseRepairModal();
+    })
+    .catch((err) => {
+      console.error('Gagal mengirim ke perbaikan:', err);
+    });
+};
 
   // Memoized data for filtering and sorting
   const filteredAndSortedData = useMemo(() => {
@@ -245,8 +246,41 @@ export default function QualityControl() {
         return 0;
       });
     }
-    return tempData;
+    return tempData.slice(0, 50);
   }, [currentData, searchTerm, sortColumn, sortDirection]);
+  const [loading, setLoading] = useState(true);
+
+useEffect(() => {
+  axios.get('/api/qc')
+    .then((res) => {
+      const raw = res.data;
+
+      const formatted = {
+        production: raw.filter(q => q.department.toLowerCase().includes("production")),
+        overhaul: raw.filter(q => q.department.toLowerCase().includes("overhaul")),
+        rekayasa: raw.filter(q => q.department && q.department.toLowerCase() === "rekayasa"),
+        kalibrasi: raw.filter(q => q.department && q.department.toLowerCase() === "kalibrasi"),
+
+      };
+
+      setData(formatted);
+    })
+    .catch((err) => {
+      console.error('Gagal memuat data QC:', err);
+      setData(initialData);
+    })
+    .finally(() => {
+      setLoading(false);
+    });
+}, []);
+
+useEffect(() => {
+  console.log("Data QC dari backend:", data);
+}, [data]);
+
+
+
+
 
   // Calculate statistics
   const totalTested = currentData.reduce((acc, item) => acc + item.tested, 0);
@@ -300,6 +334,14 @@ export default function QualityControl() {
     }
   };
 
+if (loading) {
+  return (
+    <Box sx={{ p: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+      <Typography variant="h6" color="text.secondary">Memuat data QC...</Typography>
+    </Box>
+  );
+}
+
   return (
     <Box sx={{ p: 4 }}>
       {/* Header Section */}
@@ -314,8 +356,8 @@ export default function QualityControl() {
           <Tab label="Semua" value="all" />
           <Tab label="Produksi" value="production" icon={<FactoryIcon />} iconPosition="start" />
           <Tab label="Overhaul" value="overhaul" icon={<BuildIcon />} iconPosition="start" />
-          <Tab label="Rekayasa" value="engineering" icon={<EngineeringIcon />} iconPosition="start" />
-          <Tab label="Stok" value="stock" icon={<InventoryIcon />} iconPosition="start" />
+          <Tab label="Rekayasa" value="rekayasa" icon={<EngineeringIcon />} iconPosition="start" />
+          <Tab label="kalibrasi" value="kalibrasi" icon={<InventoryIcon />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -402,8 +444,8 @@ export default function QualityControl() {
                     "Dalam Perbaikan": '#2196F3'
                   };
                   return (
-                    <TableRow key={row.id} hover>
-                      <TableCell>{row.id}</TableCell>
+                   <TableRow key={row.id || row.FrontendID} hover>
+                   <TableCell>{row.id || row.FrontendID}</TableCell>
                       <TableCell>{row.department}</TableCell>
                       <TableCell sx={{ fontWeight: 'bold' }}>{row.product}</TableCell>
                       <TableCell>{row.batch}</TableCell>
@@ -485,7 +527,12 @@ export default function QualityControl() {
               </Grid>
               {/* Doughnut Chart */}
               <Box sx={{ mt: 3, height: 200, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <Doughnut data={doughnutData} options={doughnutOptions} />
+                {currentData.length < 100 ? (
+  <Doughnut data={doughnutData} options={doughnutOptions} />
+) : (
+  <Typography variant="body2" color="text.secondary">Terlalu banyak data untuk menampilkan chart</Typography>
+)}
+
               </Box>
             </CardContent>
           </Card>
@@ -538,8 +585,8 @@ export default function QualityControl() {
                 >
                   <MenuItem value="Production">Produksi</MenuItem>
                   <MenuItem value="Overhaul">Overhaul Point Machine</MenuItem>
-                  <MenuItem value="Engineering">Rekayasa</MenuItem>
-                  <MenuItem value="Stock">Stok Produksi</MenuItem>
+                  <MenuItem value="Rekayasa">Rekayasa</MenuItem>
+                  <MenuItem value="Kalibrasi">Kalibrasi</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

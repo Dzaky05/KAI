@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import axios from 'axios';
 import {
   Box, Typography, Button, TextField, Paper,
   TableContainer, Table, TableHead, TableRow, TableCell, TableBody,
@@ -12,19 +13,22 @@ import {
 } from '@mui/icons-material';
 
 const Personalia = () => {
-  // inisialisaisi data data pegawai
-  const initialData = [
-    { id: 1, nip: '198003012005011001', jabatan: 'Manager', divisi: 'Manajemen', lokasi: 'Balai Yasa', status: 'Aktif', joinDate: '2005-01-10', urgentNumber: '081234567890', phoneNumber: '087711223344' },
-    { id: 2, nip: '198104022006022002', jabatan: 'Asisten Manager', divisi: 'Pelayanan', lokasi: 'Balai Yasa', status: 'Aktif', joinDate: '2006-02-20', urgentNumber: '081345678901', phoneNumber: '087722334455' },
-    { id: 3, nip: '198205033007033003', jabatan: 'Staff Produksi', divisi: 'Operasional', lokasi: 'Balai Yasa', status: 'Aktif', joinDate: '2007-03-30', urgentNumber: '081456789012', phoneNumber: '087733445566' },
-    { id: 4, nip: '198306044008044004', jabatan: 'IT', divisi: 'Telekomunikasi', lokasi: 'Balai Yasa', status: 'Aktif', joinDate: '2008-04-15', urgentNumber: '081567890123', phoneNumber: '087744556677' },
-    { id: 5, nip: '198407055009055005', jabatan: 'Ticketing Officer', divisi: 'Pelayanan', lokasi: 'Balai Yasa', status: 'Cuti', joinDate: '2009-05-25', urgentNumber: '081678901234', phoneNumber: '087755667788' },
-    { id: 6, nip: '198508066010066006', jabatan: 'Teknisi', divisi: 'Pemeliharaan', lokasi: 'Balai Yasa', status: 'Aktif', joinDate: '2010-06-05', urgentNumber: '081789012345', phoneNumber: '087766778899' },
-    { id: 7, nip: '198609077011077007', jabatan: 'HRD Staff', divisi: 'SDM', lokasi: 'Kantor Pusat Jakarta', status: 'Aktif', joinDate: '2011-07-12', urgentNumber: '081890123456', phoneNumber: '087777889900' },
-  ];
+  const initialData = [];
 
-  // status management
-  const [data, setData] = useState(initialData);
+  const [data, setData] = useState(initialData); // <-- PINDAH KE ATAS
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get('http://localhost:8080/api/personalia');
+        setData(response.data); // <-- Sekarang setData sudah terdefinisi
+      } catch (error) {
+        console.error('Gagal ambil data personalia:', error);
+      }
+    };
+    fetchData();
+  }, []);
+
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); // Changed initial sort key to null
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0); 
@@ -35,11 +39,25 @@ const Personalia = () => {
   });
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addFormData, setAddFormData] = useState({
+  nip: "",
+  jabatan: "",
+  divisi: "",
+  status: "",
+  joinDate: "",
+  urgentNumber: "",
+  phoneNumber: "",
+});
+
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState(null);
+  
 
-  const uniqueDivisi = useMemo(() => [...new Set(initialData.map(item => item.divisi))], [initialData]);
-  const uniqueStatus = useMemo(() => [...new Set(initialData.map(item => item.status))], [initialData]);
+  
+
+  const uniqueDivisi = useMemo(() => [...new Set(data.map(item => item.divisi))], [data]);
+  const uniqueStatus = useMemo(() => [...new Set(data.map(item => item.status))], [data]);
 
   const requestSort = (key) => {
     let direction = 'asc';
@@ -124,6 +142,14 @@ const Personalia = () => {
     setEditFormData({ ...employee }); // Initialize edit form with current employee data
     setShowEditModal(true);
   };
+   // Handle perubahan input form tambah
+   const handleAddFormChange = (e) => {
+     const { name, value } = e.target;
+     setAddFormData((prevData) => ({
+       ...prevData,
+       [name]: value,
+     }));
+  };
 
   // Handle changes in the edit form
   const handleEditFormChange = (e) => {
@@ -135,16 +161,36 @@ const Personalia = () => {
   };
 
   // Handle saving the edited data
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
+  try {
+    await axios.put(`http://localhost:8080/api/personalia/${editFormData.id}`, editFormData);
     setData((prevData) =>
       prevData.map((emp) =>
         emp.id === editFormData.id ? { ...editFormData } : emp
       )
     );
     setShowEditModal(false);
-    setShowModal(false); // Close detail modal if it was open
-    setSelectedEmployee(null); // Clear selected employee
-  };
+    setShowModal(false);
+    setSelectedEmployee(null);
+  } catch (error) {
+    console.error('Gagal update data:', error);
+  }
+};
+
+// Handle save add
+const handleSaveAdd = async () => {
+  try {
+    const response = await axios.post("http://localhost:8080/api/personalia", addFormData);
+    setData((prev) => [...prev, response.data]);
+    setShowAddModal(false);
+    setAddFormData({
+      nip: "", jabatan: "", divisi: "", status: "", joinDate: "", urgentNumber: "", phoneNumber: ""
+    });
+  } catch (error) {
+    console.error("Gagal tambah data:", error);
+  }
+};
+
 
   // Reset filters
   const resetFilters = () => {
@@ -172,6 +218,10 @@ const Personalia = () => {
           <Typography variant="h5" component="h2" fontWeight="bold">
             Data Personalia PT Kereta Api Indonesia
           </Typography>
+          <Button variant="contained" onClick={() => setShowAddModal(true)} sx={{ bgcolor: 'success.main' }}>
+           Tambah Data Personalia
+          </Button>
+
           <Stack direction="row" spacing={1}>
             <Button variant="contained" startIcon={<Print />} sx={{ bgcolor: 'primary.light' }}>
               Cetak
@@ -424,6 +474,43 @@ const Personalia = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Dialog open={showAddModal} onClose={() => setShowAddModal(false)} maxWidth="md" fullWidth>
+  <DialogTitle sx={{ bgcolor: 'success.main', color: 'white' }}>
+    Tambah Data Personalia
+  </DialogTitle>
+  <DialogContent dividers sx={{ p: 3 }}>
+
+    <Grid container spacing={2}>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="nip" label="NIP" value={addFormData.nip} onChange={handleAddFormChange} size="small" />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="jabatan" label="Jabatan" value={addFormData.jabatan} onChange={handleAddFormChange} size="small" />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="divisi" label="Divisi" value={addFormData.divisi} onChange={handleAddFormChange} size="small" />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="status" label="Status" value={addFormData.status} onChange={handleAddFormChange} size="small" />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="joinDate" label="Tanggal Bergabung" type="date" value={addFormData.joinDate} onChange={handleAddFormChange} size="small" InputLabelProps={{ shrink: true }} />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="urgentNumber" label="Nomor Urgent" value={addFormData.urgentNumber} onChange={handleAddFormChange} size="small" />
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <TextField fullWidth name="phoneNumber" label="Nomor Telepon" value={addFormData.phoneNumber} onChange={handleAddFormChange} size="small" />
+      </Grid>
+    </Grid>
+  </DialogContent>
+  
+  <DialogActions sx={{ p: 2 }}>
+    <Button onClick={() => setShowAddModal(false)} variant="outlined">Batal</Button>
+    <Button onClick={handleSaveAdd} variant="contained" color="success" startIcon={<Edit />}>Simpan</Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* Employee Edit Modal */}
       <Dialog open={showEditModal} onClose={() => setShowEditModal(false)} maxWidth="md" fullWidth>
