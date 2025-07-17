@@ -1,4 +1,4 @@
-package main
+package kalibrasi
 
 import (
 	"log"
@@ -6,10 +6,8 @@ import (
 	"strconv"
 	"time" // Import time package
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause" // Import clause for eager loading
 )
@@ -43,26 +41,11 @@ type Calibration struct {
 
 }
 
-var db *gorm.DB // Menggunakan GORM DB instance
+var db *gorm.DB
 
-// initDatabase melakukan koneksi awal ke database menggunakan GORM dan migrasi
-func initDatabase() {
-	var err error
-	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
-	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("Gagal koneksi database: %v", err)
-	}
+func Init(dbInstance *gorm.DB) {
+	db = dbInstance
 
-	// Membuat tabel calibration jika belum ada
-	err = db.AutoMigrate(&Calibration{}, &InventoryPartial{}) // Migrasi juga InventoryPartial jika belum ada
-	if err != nil {
-		log.Fatalf("Gagal migrasi database untuk Calibration: %v", err)
-	}
-
-	log.Println("Koneksi database dan migrasi Calibration berhasil!")
 }
 
 // getAllCalibrations mengambil semua item kalibrasi dari database beserta relasi (jika diperlukan)
@@ -239,33 +222,10 @@ func deleteCalibration(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
 
-func main() {
-	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
-
-	r := gin.Default() // Inisialisasi Gin router
-
-	// Konfigurasi Middleware CORS
-	// SESUAIKAN INI UNTUK PRODUCTION!
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Definisikan endpoint API untuk Kalibrasi
-	api := r.Group("/api/kalibrasi") // Menggunakan path /api/kalibrasi
-	{
-		api.GET("/", getAllCalibrations)      // GET /api/kalibrasi/
-		api.GET("/:id", getCalibrationByID)   // GET /api/kalibrasi/:id (menggunakan ID database)
-		api.POST("/", createCalibration)      // POST /api/kalibrasi/
-		api.PUT("/:id", updateCalibration)    // PUT /api/kalibrasi/:id (menggunakan ID database)
-		api.DELETE("/:id", deleteCalibration) // DELETE /api/kalibrasi/:id (menggunakan ID database)
-
-		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk:
-		// - Menautkan item kalibrasi ke Inventory tertentu (jika tidak ditangani di endpoint utama)
-		// - Mengupdate progres kalibrasi secara bertahap jika tidak semua data kalibrasi dikirim saat update PUT
-	}
-
-	log.Println("Server berjalan di http://localhost:8080")
-	log.Fatal(r.Run(":8080")) // Jalankan server
+func RegisterRoutes(r *gin.RouterGroup) {
+	r.GET("/", getAllCalibrations)
+	r.GET("/:id", getCalibrationByID)
+	r.POST("/", createCalibration)
+	r.PUT("/:id", updateCalibration)
+	r.DELETE("/:id", deleteCalibration)
 }

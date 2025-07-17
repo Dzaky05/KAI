@@ -1,4 +1,4 @@
-package main
+package overhaul
 
 import (
 	"log"
@@ -6,10 +6,8 @@ import (
 	"strconv"
 	"time" // Import time package
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +15,6 @@ import (
 
 // History mewakili struktur data untuk riwayat overhaul
 type History struct {
-	gorm.Model            // Menyediakan ID (history_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
 	HistoryID   int       `json:"id" gorm:"column:history_id;primaryKey"`              // Sesuaikan autoIncrement jika perlu
 	Timestamp   time.Time `json:"timestamp" gorm:"column:timestamp;type:varchar(100)"` // Simpan sebagai string di DB, parse sebagai time.Time di Go
 	Description string    `json:"description" gorm:"column:description"`
@@ -28,61 +25,51 @@ type History struct {
 	// Berdasarkan frontend yang embed history array di Overhaul, relasi One-to-Many (Overhaul memiliki banyak History) lebih sesuai.
 	OverhaulID uint `gorm:"column:overhaul_id"` // Foreign key ke tabel Overhaul
 }
+type Personalia struct {
+	PersonaliaID int    `gorm:"column:personalia_id;primaryKey"`
+	NIP          string `json:"nip" gorm:"column:nip"`
+}
+
+type Materials struct {
+	MaterialsID   int    `gorm:"column:materials_id;primaryKey"`
+	MaterialsName string `json:"materials_name" gorm:"column:materials_name"`
+}
+
+type Inventory struct {
+	InventoryID int    `gorm:"column:inventory_id;primaryKey"`
+	Name        string `json:"name" gorm:"column:name"`
+}
 
 // Overhaul mewakili struktur data untuk item overhaul
 type Overhaul struct {
-	gorm.Model             // Menyediakan ID (overhaul_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
-	OverhaulID   int       `json:"id" gorm:"column:overhaul_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
-	Name         string    `json:"name" gorm:"column:name"`
-	Location     string    `json:"lokasi" gorm:"column:location"` // Mapping lokasi frontend ke kolom location
-	Status       string    `json:"status" gorm:"column:status"`
-	Estimate     time.Time `json:"estimasi" gorm:"column:estimate;type:varchar(50)"` // Simpan sebagai string di DB, parse sebagai time.Time di Go
-	Progress     int       `json:"progress" gorm:"column:progress"`
-	PersonaliaID int       `json:"personalia_id" gorm:"column:personalia_id"` // Foreign key
-	MaterialsID  int       `json:"materials_id" gorm:"column:materials_id"`   // Foreign key
-	HistoryID    int       `json:"history_id" gorm:"column:history_id"`       // Foreign key ke tabel History utama (jika ada) - *Perhatikan ini berbeda dengan relasi di bawah*
-	InventoryID  int       `json:"inventory_id" gorm:"column:inventory_id"`   // Foreign key
+	gorm.Model
+	OverhaulID int       `json:"id" gorm:"column:overhaul_id;primaryKey"`
+	Name       string    `json:"name" gorm:"column:name"`
+	Location   string    `json:"lokasi" gorm:"column:location"`
+	Status     string    `json:"status" gorm:"column:status"`
+	Estimate   time.Time `json:"estimasi" gorm:"column:estimate;type:varchar(50)"`
+	Progress   int       `json:"progress" gorm:"column:progress"`
 
-	// Relasi One-to-Many: Overhaul memiliki banyak History
-	// GORM akan menggunakan OverhaulID di struct History sebagai foreign key secara default
-	History []History `json:"history,omitempty" gorm:"foreignKey:OverhaulID"` // Embed History sebagai array
+	// Foreign Keys
+	PersonaliaID int `json:"personalia_id" gorm:"column:personalia_id"`
+	MaterialsID  int `json:"materials_id" gorm:"column:materials_id"`
+	InventoryID  int `json:"inventory_id" gorm:"column:inventory_id"`
 
-	// Relasi ke tabel lain (jika perlu dimuat bersamaan, gunakan Preload)
-	// Personalia models.Personalia `json:"personalia,omitempty" gorm:"foreignKey:PersonaliaID"`
-	// Materials  models.Materials  `json:"materials,omitempty" gorm:"foreignKey:MaterialsID"`
-	// Inventory  models.Inventory  `json:"inventory,omitempty" gorm:"foreignKey:InventoryID"`
+	// Relasi eksplisit
+	Personalia Personalia `json:"personalia,omitempty" gorm:"foreignKey:PersonaliaID;references:PersonaliaID"`
+	Materials  Materials  `json:"materials,omitempty" gorm:"foreignKey:MaterialsID;references:MaterialsID"`
+	Inventory  Inventory  `json:"inventory,omitempty" gorm:"foreignKey:InventoryID;references:InventoryID"`
 
-	// Catatan: HistoryID di tabel Overhaul dan relasi One-to-Many ke History[]
-	// tampaknya sedikit kontradiktif berdasarkan skema dan frontend.
-	// Frontend mengelola daftar riwayat per item overhaul.
-	// Saya akan mengabaikan HistoryID di struct Overhaul dan fokus pada relasi One-to-Many History[]
-	// Jika HistoryID di Overhaul merujuk ke History utama yang unik, struktur perlu disesuaikan.
-	// Asumsi: Frontend mengelola array riwayat unik untuk setiap item overhaul, bukan merujuk ke satu record di tabel History.
-	// Jika tabel History adalah log global, maka relasinya berbeda.
-	// Berdasarkan frontend, saya akan memperlakukan History sebagai entitas yang terkait langsung dengan Overhaul.
+	// Relasi One-to-Many
+	History []History `json:"history,omitempty" gorm:"foreignKey:OverhaulID;constraint:OnDelete:CASCADE"`
 }
 
 var db *gorm.DB // Menggunakan GORM DB instance
 
 // initDatabase melakukan koneksi awal ke database menggunakan GORM
-func initDatabase() {
-	var err error
-	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
-	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("Gagal koneksi database: %v", err)
-	}
+func Init(dbInstance *gorm.DB) {
+	db = dbInstance
 
-	// AutoMigrate akan membuat atau memperbarui tabel Overhaul dan History
-	// GORM akan menangani pembuatan kolom foreign key secara otomatis berdasarkan relasi
-	err = db.AutoMigrate(&Overhaul{}, &History{})
-	if err != nil {
-		log.Fatalf("Gagal migrasi database untuk Overhaul dan History: %v", err)
-	}
-
-	log.Println("Koneksi database dan migrasi Overhaul/History berhasil!")
 }
 
 // getAllOverhaul mengambil semua item overhaul dari database beserta riwayatnya
@@ -254,30 +241,10 @@ func deleteOverhaul(c *gin.Context) {
 
 	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
-
-func main() {
-	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
-
-	r := gin.Default() // Inisialisasi Gin router
-
-	// Konfigurasi Middleware CORS
-	// SESUAIKAN INI UNTUK PRODUCTION!
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Definisikan endpoint API untuk Overhaul
-	api := r.Group("/api/overhaul") // Menggunakan path /api/overhaul
-	{
-		api.GET("/", getAllOverhaul)       // GET /api/overhaul/
-		api.GET("/:id", getOverhaulByID)   // GET /api/overhaul/:id
-		api.POST("/", createOverhaul)      // POST /api/overhaul/
-		api.PUT("/:id", updateOverhaul)    // PUT /api/overhaul/:id
-		api.DELETE("/:id", deleteOverhaul) // DELETE /api/overhaul/:id
-	}
-
-	log.Println("Server berjalan di http://localhost:8080")
-	log.Fatal(r.Run(":8080")) // Jalankan server
+func RegisterRoutes(r *gin.RouterGroup) {
+	r.GET("/", getAllOverhaul)
+	r.GET("/:id", getOverhaulByID)
+	r.POST("/", createOverhaul)
+	r.PUT("/:id", updateOverhaul)
+	r.DELETE("/:id", deleteOverhaul)
 }

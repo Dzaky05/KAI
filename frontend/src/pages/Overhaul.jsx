@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 import {
   Box, Typography, Card, CardContent, Grid, Table, TableHead,
   TableRow, TableCell, TableBody, TableContainer, Paper, TextField,
@@ -65,6 +67,19 @@ export default function OverhaulPoint() {
   // State for editing history
   const [editHistoryDialogOpen, setEditHistoryDialogOpen] = useState(false);
   const [currentEditingHistory, setCurrentEditingHistory] = useState(null); // The history item being edited
+useEffect(() => {
+  fetchOverhaulData();
+}, []);
+
+const fetchOverhaulData = async () => {
+  try {
+    const response = await axios.get('http://localhost:8080/api/overhaul'); // ganti sesuai endpointmu
+    setData(response.data);
+  } catch (error) {
+    console.error('Gagal mengambil data overhaul:', error);
+    setSnackbar({ open: true, message: 'Gagal mengambil data overhaul dari server.', severity: 'error' });
+  }
+};
 
 
   const filteredData = data.filter(d =>
@@ -98,36 +113,47 @@ export default function OverhaulPoint() {
     setCurrentItem(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = () => {
-    if (!currentItem.name || !currentItem.lokasi || !currentItem.status || !currentItem.estimasi) {
-      setSnackbar({ open: true, message: 'Semua kolom wajib diisi!', severity: 'error' });
-      return;
-    }
+  const handleSave = async () => {
+  if (!currentItem.name || !currentItem.lokasi || !currentItem.status || !currentItem.estimasi) {
+    setSnackbar({ open: true, message: 'Semua kolom wajib diisi!', severity: 'error' });
+    return;
+  }
 
+  try {
     if (editMode) {
-      setData(prev => prev.map(item =>
-        item.id === currentItem.id ? { ...currentItem, progress: Number(currentItem.progress) } : item
-      ));
-      setSnackbar({ open: true, message: 'Data overhaul berhasil diperbarui!', severity: 'success' });
+      await axios.put(`http://localhost:8080/api/overhaul/${currentItem.id}`, currentItem);
+      setSnackbar({ open: true, message: 'Data berhasil diperbarui!', severity: 'success' });
     } else {
-      const newId = data.length ? Math.max(...data.map(d => d.id)) + 1 : 1;
-      setData(prev => [...prev, { ...currentItem, id: newId, progress: Number(currentItem.progress) }]);
-      setSnackbar({ open: true, message: 'Data overhaul berhasil ditambahkan!', severity: 'success' });
+      await axios.post(`http://localhost:8080/api/overhaul`, currentItem);
+      setSnackbar({ open: true, message: 'Data berhasil ditambahkan!', severity: 'success' });
     }
+    fetchOverhaulData(); // Refresh data dari server
     handleCloseDrawer();
-  };
+  } catch (err) {
+    console.error(err);
+    setSnackbar({ open: true, message: 'Gagal menyimpan ke server.', severity: 'error' });
+  }
+};
+
 
   const handleDeleteClick = (id) => {
     setItemToDelete(id);
     setDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    setData(prev => prev.filter(item => item.id !== itemToDelete));
+  const handleConfirmDelete = async () => {
+  try {
+    await axios.delete(`http://localhost:8080/api/overhaul/${itemToDelete}`);
     setSnackbar({ open: true, message: 'Data overhaul berhasil dihapus!', severity: 'info' });
-    setDialogOpen(false);
-    setItemToDelete(null);
-  };
+    fetchOverhaulData(); // Refresh dari server
+  } catch (error) {
+    console.error('Gagal menghapus:', error);
+    setSnackbar({ open: true, message: 'Gagal menghapus data dari server.', severity: 'error' });
+  }
+  setDialogOpen(false);
+  setItemToDelete(null);
+};
+
 
   const handleCloseDialog = () => {
     setDialogOpen(false);

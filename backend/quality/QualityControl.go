@@ -1,4 +1,4 @@
-package main
+package quality
 
 import (
 	"fmt"
@@ -8,10 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	// Import clause for eager loading
 )
@@ -38,7 +36,7 @@ type Inventory struct {
 // QualityControl mewakili struktur data untuk entri QC
 type QualityControl struct {
 	gorm.Model     // Menyediakan ID (qc_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
-	QcID       int `json:"id" gorm:"column:qc_id;primaryKey"` // Mapping id frontend ke qc_id
+	QcID       int `json:"id" gorm:"column:qc_id;primaryKey"`
 
 	ProductName string    `json:"product" gorm:"column:product_name"` // Mapping product frontend ke product_name
 	BatchCode   string    `json:"batch" gorm:"column:batch_code"`     // Mapping batch frontend ke batch_code
@@ -175,32 +173,6 @@ func calculatePassRate(qc *QualityControl) {
 	}
 }
 
-var db *gorm.DB // Menggunakan GORM DB instance
-
-// initDatabase melakukan koneksi awal ke database menggunakan GORM dan migrasi
-func initDatabase() {
-	var err error
-	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
-	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("Gagal koneksi database: %v", err)
-	}
-
-	// Membuat tabel quality_control jika belum ada
-	// Anda bisa menjalankan skrip SQL CREATE TABLE secara manual atau menggunakan AutoMigrate.
-	// AutoMigrate lebih mudah, tetapi perlu struktur struct yang sesuai.
-	// Jika Anda menjalankan skrip SQL manual, pastikan skema struct cocok.
-	// Menggunakan AutoMigrate akan membuat tabel jika tidak ada.
-	err = db.AutoMigrate(&QualityControl{})
-	if err != nil {
-		log.Fatalf("Gagal migrasi database untuk QualityControl: %v", err)
-	}
-
-	log.Println("Koneksi database dan migrasi QualityControl berhasil!")
-}
-
 // getAllQualityControl mengambil semua entri QC dari database beserta relasi (jika diperlukan)
 func getAllQualityControl(c *gin.Context) {
 	var qcEntries []QualityControl
@@ -256,6 +228,17 @@ func createQualityControl(c *gin.Context) {
 	var newEntry QualityControl
 	if err := c.ShouldBindJSON(&newEntry); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		return
+	}
+	//validasi department
+	validDepartments := map[string]bool{
+		"Production": true,
+		"Overhaul":   true,
+		"Rekayasa":   true,
+		"Kalibrasi":  true,
+	}
+	if !validDepartments[newEntry.Department] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Department tidak valid"})
 		return
 	}
 
@@ -385,6 +368,17 @@ func updateQualityControl(c *gin.Context) {
 		return
 	}
 
+	validDepartments := map[string]bool{
+		"Production": true,
+		"Overhaul":   true,
+		"Rekayasa":   true,
+		"Kalibrasi":  true,
+	}
+	if !validDepartments[updatedEntry.Department] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Department tidak valid"})
+		return
+	}
+
 	// Validasi sederhana
 	if updatedEntry.ProductName == "" || updatedEntry.BatchCode == "" || updatedEntry.Status == "" || updatedEntry.Department == "" || updatedEntry.TestedCount < 0 || updatedEntry.PassedCount < 0 || updatedEntry.QcDate.IsZero() {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (product, batch, status, department, tested, passed, date) wajib diisi dan jumlah tidak boleh negatif"})
@@ -491,34 +485,55 @@ func updateQualityControl(c *gin.Context) {
 
 	c.JSON(http.StatusOK, savedEntry) // Kirim kembali entri yang diperbarui
 }
-
-func main() {
-	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
-
-	r := gin.Default() // Inisialisasi Gin router
-
-	// Konfigurasi Middleware CORS
-	// SESUAIKAN INI UNTUK PRODUCTION!
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Definisikan endpoint API untuk Quality Control
-	api := r.Group("/api/qc") // Menggunakan path /api/qc
-	{
-		api.GET("/", getAllQualityControl)       // GET /api/qc/
-		api.GET("/:id", getQualityControlByID)   // GET /api/qc/:id (menggunakan ID database)
-		api.POST("/", createQualityControl)      // POST /api/qc/
-		api.PUT("/:id", updateQualityControl)    // PUT /api/qc/:id (menggunakan ID database)
-		api.DELETE("/:id", deleteQualityControl) // DELETE /api/qc/:id (menggunakan ID database)
-
-		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk:
-		// - Mengelola item yang "Tidak Lulus" atau "Dalam Perbaikan" (misalnya, mengirim notifikasi, menautkan ke proses perbaikan spesifik)
-		// - Mencari entri QC berdasarkan kode frontend (misalnya, /api/qc/code/{frontendCode})
+func getQualityControlByFrontendID(c *gin.Context) {
+	frontendCode := c.Param("frontendCode")
+	deptPrefix, numericID, err := parseFrontendID(frontendCode)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format FrontendID tidak valid", "details": err.Error()})
+		return
 	}
 
-	log.Println("Server berjalan di http://localhost:8080")
-	log.Fatal(r.Run(":8080")) // Jalankan server
+	var entry QualityControl
+	if result := db.Where("qc_id = ? AND department = ?", numericID, getDepartmentFromPrefix(deptPrefix)).First(&entry); result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Entri QC tidak ditemukan untuk kode tersebut"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data QC", "details": result.Error.Error()})
+		}
+		return
+	}
+
+	entry.FrontendID = generateFrontendID(&entry)
+	calculatePassRate(&entry)
+
+	c.JSON(http.StatusOK, entry)
+}
+func getDepartmentFromPrefix(prefix string) string {
+	switch strings.ToUpper(prefix) {
+	case "PRD":
+		return "Production"
+	case "OVH":
+		return "Overhaul"
+	case "RKY":
+		return "Rekayasa"
+	case "KAL":
+		return "Kalibrasi"
+	default:
+		return ""
+	}
+}
+
+var db *gorm.DB
+
+func Init(database *gorm.DB) {
+	db = database
+
+}
+
+func RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/", getAllQualityControl)
+	rg.GET("/:id", getQualityControlByID)
+	rg.POST("/", createQualityControl)
+	rg.PUT("/:id", updateQualityControl)
+	rg.DELETE("/:id", deleteQualityControl)
 }

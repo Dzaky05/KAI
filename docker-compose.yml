@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  db:
+    image: mysql:8.0
+    container_name: kai-db
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_DATABASE: kai_balai_yasa
+    ports:
+      - "3306:3306"
+    volumes:
+      - kai_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -8,37 +26,27 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       - DB_HOST=db
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASS=
+      - DB_PASS=root
       - DB_NAME=kai_balai_yasa
-    volumes:
-      - ./backend:/app
 
   frontend:
     build:
       context: ./frontend
     container_name: react-frontend
     ports:
-      - "5173:5173"
+      - "3000:80"
     depends_on:
       - backend
-
-  db:
-    image: mysql:8.0
-    container_name: kai-db
-    restart: always
-    command: --default-authentication-plugin=mysql_native_password
     environment:
-      MYSQL_ROOT_PASSWORD: ""
-      MYSQL_DATABASE: kai_balai_yasa
-    ports:
-      - "3306:3306"
-    volumes:
-      - kai_data:/var/lib/mysql
+      - REACT_APP_API_URL=http://localhost:8080
 
+
+# 👇 Volume harus berada sejajar (indentasi sama) dengan "services"
 volumes:
   kai_data:

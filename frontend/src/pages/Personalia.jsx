@@ -17,17 +17,21 @@ const Personalia = () => {
 
   const [data, setData] = useState(initialData); // <-- PINDAH KE ATAS
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await axios.get('http://localhost:8080/api/personalia');
-        setData(response.data); // <-- Sekarang setData sudah terdefinisi
-      } catch (error) {
-        console.error('Gagal ambil data personalia:', error);
-      }
-    };
-    fetchData();
-  }, []);
+ const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8080";
+console.log("API_URL dari ENV:", API_URL);
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/personalia`);
+      setData(response.data); // ✅ gunakan langsung data dari backend
+    } catch (error) {
+      console.error('Gagal ambil data personalia:', error);
+    }
+  };
+  fetchData();
+}, []);
+
+
 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); // Changed initial sort key to null
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,8 +46,8 @@ const Personalia = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addFormData, setAddFormData] = useState({
   nip: "",
-  jabatan: "",
   divisi: "",
+  jabatan: "",
   status: "",
   joinDate: "",
   urgentNumber: "",
@@ -53,7 +57,8 @@ const Personalia = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState(null);
   
-
+  const isAddFormValid = Object.values(addFormData).every(val => val !== '');
+  const isEditFormValid = Object.values(editFormData || {}).every(val => val !== '');
   
 
   const uniqueDivisi = useMemo(() => [...new Set(data.map(item => item.divisi))], [data]);
@@ -161,35 +166,58 @@ const Personalia = () => {
   };
 
   // Handle saving the edited data
-  const handleSaveEdit = async () => {
+ const handleSaveEdit = async () => {
   try {
-    await axios.put(`http://localhost:8080/api/personalia/${editFormData.id}`, editFormData);
+    await axios.put(`${API_URL}/api/personalia/${editFormData.personalia_id}`, editFormData);
+    
+    // Update data di state
     setData((prevData) =>
-      prevData.map((emp) =>
-        emp.id === editFormData.id ? { ...editFormData } : emp
+      prevData.map((item) =>
+        item.personalia_id === editFormData.personalia_id ? { ...item, ...editFormData } : item
       )
     );
+
     setShowEditModal(false);
-    setShowModal(false);
-    setSelectedEmployee(null);
   } catch (error) {
     console.error('Gagal update data:', error);
+    alert('Gagal update data. Lihat console untuk detail.');
   }
 };
 
-// Handle save add
 const handleSaveAdd = async () => {
   try {
-    const response = await axios.post("http://localhost:8080/api/personalia", addFormData);
-    setData((prev) => [...prev, response.data]);
-    setShowAddModal(false);
-    setAddFormData({
-      nip: "", jabatan: "", divisi: "", status: "", joinDate: "", urgentNumber: "", phoneNumber: ""
+    const newData = {
+      nip: addFormData.nip,
+      divisi: addFormData.divisi,
+      jabatan: addFormData.jabatan,
+      status: addFormData.status,
+      joinDate: addFormData.joinDate,
+      urgentNumber: addFormData.urgentNumber,
+      phoneNumber: addFormData.phoneNumber,
+       profile_id: null, // <--- PENTING: sesuaikan dengan ID yang valid!
+    };
+
+    const response = await axios.post(`${API_URL}/api/personalia`, newData);
+
+    // Tambahkan data baru ke state
+    setData(prev => [...prev, response.data]);
+    setShowAddModal(false); // Tutup modal
+    setAddFormData({ // Reset form
+      nip: "",
+      divisi: "",
+      jabatan: "",
+      status: "",
+      joinDate: "",
+      urgentNumber: "",
+      phoneNumber: "",
     });
   } catch (error) {
-    console.error("Gagal tambah data:", error);
+    console.error('Gagal tambah data:', error);
+    alert('Gagal tambah data. Lihat console untuk detail.');
   }
 };
+
+
 
 
   // Reset filters
@@ -333,7 +361,7 @@ const handleSaveAdd = async () => {
                 {currentItems.length > 0 ? (
                   currentItems.map((item) => (
                     <TableRow
-                      key={item.id}
+                      key={item.personalia_id}
                       onClick={() => handleRowClick(item)}
                       sx={{ '&:hover': { bgcolor: 'action.hover', cursor: 'pointer' } }}
                     >
@@ -507,7 +535,16 @@ const handleSaveAdd = async () => {
   
   <DialogActions sx={{ p: 2 }}>
     <Button onClick={() => setShowAddModal(false)} variant="outlined">Batal</Button>
-    <Button onClick={handleSaveAdd} variant="contained" color="success" startIcon={<Edit />}>Simpan</Button>
+  <Button 
+  onClick={handleSaveAdd} 
+  variant="contained" 
+  color="success" 
+  startIcon={<Edit />} 
+  disabled={!isAddFormValid}
+>
+  Simpan
+</Button>
+
   </DialogActions>
 </Dialog>
 
@@ -629,9 +666,15 @@ const handleSaveAdd = async () => {
           <Button onClick={() => setShowEditModal(false)} variant="outlined">
             Batal
           </Button>
-          <Button variant="contained" startIcon={<Edit />} onClick={handleSaveEdit}>
-            Simpan Perubahan
-          </Button>
+         <Button 
+      variant="contained" 
+      startIcon={<Edit />} 
+      onClick={handleSaveEdit}
+      disabled={!isEditFormValid}
+>
+       Simpan Perubahan
+      </Button>
+
         </DialogActions>
       </Dialog>
     </Box>

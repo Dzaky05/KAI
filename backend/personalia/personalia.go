@@ -1,52 +1,91 @@
-package main
+package personalia
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"time" // Import time package
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
+
+type DateOnly struct {
+	time.Time
+}
+
+// Custom type untuk tanggal saja (YYYY-MM-DD) tanpa waktu
+func (d DateOnly) Value() (driver.Value, error) {
+	if d.Time.IsZero() {
+		return nil, nil
+	}
+	return d.Time.Format("2006-01-02"), nil
+}
+
+func (d *DateOnly) Scan(value interface{}) error {
+	if value == nil {
+		d.Time = time.Time{}
+		return nil
+	}
+
+	switch v := value.(type) {
+	case time.Time:
+		d.Time = v
+		return nil
+	case []byte:
+		t, err := time.Parse("2006-01-02", string(v))
+		if err != nil {
+			return err
+		}
+		d.Time = t
+		return nil
+	case string:
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			return err
+		}
+		d.Time = t
+		return nil
+	default:
+		return fmt.Errorf("cannot scan type %T into DateOnly", value)
+	}
+}
+
+func (d DateOnly) MarshalJSON() ([]byte, error) {
+	if d.Time.IsZero() {
+		return []byte(`null`), nil
+	}
+	return []byte(`"` + d.Time.Format("2006-01-02") + `"`), nil
+}
 
 // Struct model sesuai dengan skema database dan kebutuhan frontend
 
 // Profile mewakili struktur data profile (partial, hanya field yang relevan untuk relasi dan nama jika ada)
 type Profile struct {
-	gorm.Model
-	ProfileID int `json:"profile_id" gorm:"column:profile_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
-	// Asumsi: Nama pegawai ada di tabel Profile
-	// Jika nama ada di sini, tambahkan field ini:
-	// Name string `json:"name" gorm:"column:name"` // Contoh jika ada kolom 'name' di tabel profile
+	ProfileID    int    `json:"profile_id" gorm:"column:profile_id;primaryKey"`
 	Email        string `json:"email" gorm:"column:email"`
-	Address      string `json:"address" gorm:"column:address"` // Perhatikan typo di skema database (addres vs address)
+	Address      string `json:"address" gorm:"column:address"`
 	PhoneNumber  string `json:"phone_number" gorm:"column:phone_number"`
-	EducationID  int    `json:"education_id" gorm:"column:education_id"`   // Foreign key
-	ExperienceID int    `json:"experience_id" gorm:"column:experience_id"` // Foreign key
-
-	// Relasi ke tabel lain (Education, Experience) bisa ditambahkan jika perlu dimuat
-	// Education  Education  `json:"education,omitempty" gorm:"foreignKey:EducationID"`
-	// Experience Experience `json:"experience,omitempty" gorm:"foreignKey:ExperienceID"`
+	EducationID  int    `json:"education_id" gorm:"column:education_id"`
+	ExperienceID int    `json:"experience_id" gorm:"column:experience_id"`
 }
 
 // Personalia mewakili struktur data untuk item personalia
 type Personalia struct {
-	gorm.Model             // Menyediakan ID (personalia_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
-	PersonaliaID int       `json:"id" gorm:"column:personalia_id;primaryKey"` // Mapping id frontend ke personalia_id
-	NIP          string    `json:"nip" gorm:"column:nip"`                     // Menggunakan string untuk NIP
-	Jabatan      string    `json:"jabatan" gorm:"column:jabatan"`
-	Divisi       string    `json:"divisi" gorm:"column:divisi"`
-	Lokasi       string    `json:"lokasi" gorm:"column:lokasi"`
-	Status       string    `json:"status" gorm:"column:status"`
-	JoinDate     time.Time `gorm:"column:join_date"`
-	PhoneNumber  string    `json:"phoneNumber" gorm:"column:phone_number"`
-	UrgentNumber string    `json:"urgentNumber" gorm:"column:urgent_number"` // Mapping urgentNumber frontend ke urgent_number
+	PersonaliaID int      `gorm:"primaryKey;column:personalia_id"`
+	NIP          string   `json:"nip" gorm:"column:nip"` // Menggunakan string untuk NIP
+	Jabatan      string   `json:"jabatan" gorm:"column:jabatan"`
+	Divisi       string   `json:"divisi" gorm:"column:divisi"`
+	Lokasi       string   `json:"lokasi" gorm:"column:lokasi"`
+	Status       string   `json:"status" gorm:"column:status"`
+	JoinDate     DateOnly `gorm:"column:join_date"`
+	PhoneNumber  string   `json:"phoneNumber" gorm:"column:phone_number"`
+	UrgentNumber string   `json:"urgentNumber" gorm:"column:urgent_number"` // Mapping urgentNumber frontend ke urgent_number
 
-	ProfileID uint `json:"profile_id" gorm:"column:profile_id"` // Foreign key ke tabel Profile
+	ProfileID int `json:"profile_id" gorm:"column:profile_id"` // Foreign key ke tabel Profile
 
 	// Relasi Many-to-One: Personalia dimiliki oleh satu Profile
 	// GORM akan menggunakan ProfileID di struct Personalia sebagai foreign key secara default
@@ -63,24 +102,8 @@ type Personalia struct {
 var db *gorm.DB // Menggunakan GORM DB instance
 
 // initDatabase melakukan koneksi awal ke database menggunakan GORM
-func initDatabase() {
-	var err error
-	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
-	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("Gagal koneksi database: %v", err)
-	}
-
-	// AutoMigrate akan membuat atau memperbarui tabel Personalia dan Profile
-	// GORM akan menangani pembuatan kolom foreign key secara otomatis berdasarkan relasi
-	err = db.AutoMigrate(&Personalia{}, &Profile{}) // Migrasi juga Profile
-	if err != nil {
-		log.Fatalf("Gagal migrasi database untuk Personalia dan Profile: %v", err)
-	}
-
-	log.Println("Koneksi database dan migrasi Personalia/Profile berhasil!")
+func Init(database *gorm.DB) {
+	db = database
 }
 
 // getAllPersonalia mengambil semua item personalia dari database beserta profile terkait
@@ -285,33 +308,61 @@ func deletePersonalia(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
 
-func main() {
-	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
+// Handler: Assign profile_id ke personalia
+// Handler: Assign profile_id ke personalia
+func AssignProfileToPersonalia(c *gin.Context) {
+	id := c.Param("id")
 
-	r := gin.Default() // Inisialisasi Gin router
-
-	// Konfigurasi Middleware CORS
-	// SESUAIKAN INI UNTUK PRODUCTION!
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Definisikan endpoint API untuk Personalia
-	api := r.Group("/api/personalia") // Menggunakan path /api/personalia
-	{
-		api.GET("/", getAllPersonalia)       // GET /api/personalia/
-		api.GET("/:id", getPersonaliaByID)   // GET /api/personalia/:id
-		api.POST("/", createPersonalia)      // POST /api/personalia/
-		api.PUT("/:id", updatePersonalia)    // PUT /api/personalia/:id
-		api.DELETE("/:id", deletePersonalia) // DELETE /api/personalia/:id
-
-		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk mengelola:
-		// - Data Profile terkait (jika tidak ingin mengelola Profile via endpoint Personalia)
-		// - Relasi Many-to-Many dengan ProduksiTeam dan RekayasaTeam (jika perlu menambah/menghapus anggota tim)
+	var input struct {
+		ProfileID *int `json:"profile_id"`
 	}
 
-	log.Println("Server berjalan di http://localhost:8080")
-	log.Fatal(r.Run(":8080")) // Jalankan server
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	var personalia Personalia
+	if err := db.First(&personalia, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Data personalia tidak ditemukan"})
+		return
+	}
+
+	personalia.ProfileID = 0
+	if input.ProfileID != nil {
+		personalia.ProfileID = *input.ProfileID
+	}
+
+	if input.ProfileID != nil {
+		var profile Profile
+		if err := db.First(&profile, *input.ProfileID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Profile dengan ID tersebut tidak ditemukan"})
+			return
+		}
+	}
+
+	if err := db.Save(&personalia).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengupdate profile_id"})
+		return
+	}
+
+	c.JSON(http.StatusOK, personalia)
+}
+
+func RegisterRoutes(r *gin.RouterGroup) {
+
+	// Konfigurasi CORS hanya sekali saja di main.go
+	// jadi di sini TIDAK PERLU pakai r.Use(cors.New(config))
+
+	api := r // ✅ karena prefix sudah diberikan dari main.go
+
+	{
+		api.GET("/", getAllPersonalia)
+		api.GET("/:id", getPersonaliaByID)
+		api.POST("/", createPersonalia)
+		api.PUT("/:id", updatePersonalia)
+		api.DELETE("/:id", deletePersonalia)
+		api.PUT("/:id/assign-profile", AssignProfileToPersonalia)
+
+	}
 }

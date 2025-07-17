@@ -1,4 +1,4 @@
-package main
+package profile
 
 import (
 	"log"
@@ -7,10 +7,8 @@ import (
 
 	// "time" // Import time package jika ada field tanggal di Profile (selain join_date di Personalia)
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause" // Import clause for eager loading
 )
@@ -19,83 +17,41 @@ import (
 
 // Education mewakili struktur data pendidikan (partial, jika perlu dimuat)
 type Education struct {
-	gorm.Model
-	EducationID int    `json:"education_id" gorm:"column:education_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
-	Degree      string `json:"degree" gorm:"column:degree"`
-	University  string `json:"university" gorm:"column:university"`
-	Year        string `json:"year" gorm:"column:year"` // Pertimbangkan tipe data int
+	EducationID int    `json:"education_id" gorm:"primaryKey;autoIncrement"`
+	Degree      string `json:"degree"`
+	University  string `json:"university"`
+	Year        string `json:"year"`
 }
 
-// Experience mewakili struktur data pengalaman (partial, jika perlu dimuat)
 type Experience struct {
-	gorm.Model
-	ExperienceID int    `json:"experience_id" gorm:"column:experience_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
+	ExperienceID int    `json:"experience_id" gorm:"column:experience_id;primaryKey;index"`
 	Position     string `json:"position" gorm:"column:position"`
 	Period       string `json:"period" gorm:"column:period"`
 }
 
 // PersonaliaPartial mewakili data Personalia yang relevan untuk Profile (NIP dan Nama jika ada)
 // Ini digunakan untuk memuat data Personalia yang terkait dengan Profile
-type PersonaliaPartial struct {
-	gorm.Model
-	PersonaliaID int    `json:"personalia_id" gorm:"column:personalia_id;primaryKey"`
-	NIP          string `json:"nip" gorm:"column:nip"`
-	// Asumsi: Nama pegawai ada di tabel Personalia atau terkait erat via Personalia
-	// Jika nama ada di tabel Personalia:
-	// Name string `json:"name" gorm:"column:nama_kolom_nama_personalia"` // Contoh
-}
 
 // Profile mewakili struktur data untuk item profile
 type Profile struct {
-	gorm.Model         // Menyediakan ID (profile_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
-	ProfileID   int    `json:"id" gorm:"column:profile_id;primaryKey"` // Mapping id frontend ke profile_id
+	ProfileID   int    `json:"id" gorm:"column:profile_id;primaryKey;autoIncrement"`
 	Email       string `json:"email" gorm:"column:email"`
-	Address     string `json:"address" gorm:"column:addres"`           // Perhatikan typo di skema database (addres vs address)
-	PhoneNumber string `json:"phoneNumber" gorm:"column:phone_number"` // Mapping phoneNumber frontend ke phone_number
+	Address     string `json:"address" gorm:"column:address"`
+	PhoneNumber string `json:"phoneNumber" gorm:"column:phone_number"`
 
-	EducationID  uint `json:"education_id,omitempty" gorm:"column:education_id"`   // Foreign key
-	ExperienceID uint `json:"experience_id,omitempty" gorm:"column:experience_id"` // Foreign key
+	EducationID  *int `json:"education_id,omitempty" gorm:"column:education_id;type:bigint unsigned;index"`
+	ExperienceID *int `json:"experience_id,omitempty" gorm:"column:experience_id;type:bigint unsigned;index"`
 
-	// Relasi One-to-One: Profile memiliki satu Education dan satu Experience
-	Education  *Education  `json:"education,omitempty" gorm:"foreignKey:EducationID"`   // Menggunakan pointer untuk One-to-One opsional
-	Experience *Experience `json:"experience,omitempty" gorm:"foreignKey:ExperienceID"` // Menggunakan pointer untuk One-to-One opsional
-
-	// Relasi One-to-One atau One-to-Many: Satu Profile bisa terkait dengan satu atau banyak Personalia?
-	// Berdasarkan frontend (satu NIP per profil), relasi One-to-One (satu Profile untuk satu Personalia) lebih mungkin.
-	// Namun, relasi di DB adalah Personalia punya ProfileID.
-	// Ini berarti One-to-One (Profile has one Personalia) atau One-to-Many (Profile has many Personalia).
-	// Untuk mengambil NIP dan Nama (jika di Personalia), kita bisa menggunakan:
-	// Personalia *PersonaliaPartial `json:"personalia,omitempty" gorm:"foreignKey:ProfileID"` // Jika One-to-One Profile has one Personalia
-	// ATAU (jika satu Profile bisa terkait dengan banyak Personalia, tapi frontend hanya menampilkan satu):
-	Personalials []PersonaliaPartial `json:"personalials,omitempty" gorm:"foreignKey:ProfileID"` // Jika One-to-Many Profile has many Personalials
-
-	// Field untuk Nama dan NIP dari Personalia (diisi saat mengambil data)
-	Name string `json:"name" gorm:"-"` // Field transient, tidak ada di tabel Profile
-	NIP  string `json:"nip" gorm:"-"`  // Field transient, tidak ada di tabel Profile
-
+	Education  *Education  `gorm:"foreignKey:EducationID;references:EducationID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	Experience *Experience `gorm:"foreignKey:ExperienceID;references:ExperienceID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 }
 
 var db *gorm.DB // Menggunakan GORM DB instance
 
 // initDatabase melakukan koneksi awal ke database menggunakan GORM
-func initDatabase() {
-	var err error
-	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
-	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("Gagal koneksi database: %v", err)
-	}
-
-	// AutoMigrate akan membuat atau memperbarui tabel Profile, Education, Experience
-	// Kita juga perlu migrasi Personalia agar relasi bisa dikenali oleh GORM
-	err = db.AutoMigrate(&Profile{}, &Education{}, &Experience{}, &PersonaliaPartial{}) // Migrasi juga PersonaliaPartial
-	if err != nil {
-		log.Fatalf("Gagal migrasi database untuk Profile/relasi: %v", err)
-	}
-
-	log.Println("Koneksi database dan migrasi Profile/relasi berhasil!")
+func Init(database *gorm.DB) {
+	db = database
+	// Jangan AutoMigrate karena tabel sudah ada di database
 }
 
 // getAllProfiles mengambil semua item profile dari database beserta relasi terkait
@@ -107,22 +63,6 @@ func getAllProfiles(c *gin.Context) {
 		log.Printf("Error saat mengambil data profiles: %v", result.Error)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data profiles", "details": result.Error.Error()})
 		return
-	}
-
-	// Mengisi field Name dan NIP transient dari data Personalials yang dimuat
-	for i := range profiles {
-		if len(profiles[i].Personalials) > 0 {
-			// Asumsi: Satu Profile terkait dengan setidaknya satu Personalia dan kita ambil yang pertama untuk NIP/Nama
-			profiles[i].NIP = profiles[i].Personalials[0].NIP
-			// Jika nama ada di PersonaliaPartial, ambil juga:
-			// profiles[i].Name = profiles[i].Personalials[0].Name // Contoh
-			// Jika nama tidak ada di Personalia, Anda perlu cara lain untuk mendapatkannya
-			// Untuk sementara, saya akan mengisi Name dengan placeholder atau mengosongkannya
-			profiles[i].Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
-		} else {
-			profiles[i].NIP = "N/A"
-			profiles[i].Name = "Nama Pegawai Tidak Diketahui"
-		}
 	}
 
 	c.JSON(http.StatusOK, profiles)
@@ -147,17 +87,6 @@ func getProfileByID(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data profile", "details": result.Error.Error()})
 		}
 		return
-	}
-
-	// Mengisi field Name dan NIP transient dari data Personalials yang dimuat
-	if len(item.Personalials) > 0 {
-		item.NIP = item.Personalials[0].NIP
-		// Jika nama ada di PersonaliaPartial, ambil juga:
-		// item.Name = item.Personalials[0].Name // Contoh
-		item.Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
-	} else {
-		item.NIP = "N/A"
-		item.Name = "Nama Pegawai Tidak Diketahui"
 	}
 
 	c.JSON(http.StatusOK, item)
@@ -206,14 +135,6 @@ func createProfile(c *gin.Context) {
 	// Muat ulang item dengan relasi yang sudah disimpan untuk respons
 	var createdItem Profile
 	db.Preload(clause.Associations).First(&createdItem, newItem.ProfileID)
-	// Isi field transient Name dan NIP
-	if len(createdItem.Personalials) > 0 {
-		createdItem.NIP = createdItem.Personalials[0].NIP
-		createdItem.Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
-	} else {
-		createdItem.NIP = "N/A"
-		createdItem.Name = "Nama Pegawai Tidak Diketahui"
-	}
 
 	c.JSON(http.StatusCreated, createdItem) // Kirim kembali item yang baru ditambahkan
 }
@@ -277,14 +198,6 @@ func updateProfile(c *gin.Context) {
 	// Muat ulang item dengan relasi untuk respons (jika update relasi dilakukan)
 	var savedItem Profile
 	db.Preload(clause.Associations).First(&savedItem, item.ProfileID)
-	// Isi field transient Name dan NIP
-	if len(savedItem.Personalials) > 0 {
-		savedItem.NIP = savedItem.Personalials[0].NIP
-		savedItem.Name = "Nama Pegawai (Ambil dari sumber lain)" // Placeholder
-	} else {
-		savedItem.NIP = "N/A"
-		savedItem.Name = "Nama Pegawai Tidak Diketahui"
-	}
 
 	c.JSON(http.StatusOK, savedItem) // Kirim kembali item yang diperbarui
 }
@@ -326,33 +239,11 @@ func deleteProfile(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
 
-func main() {
-	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
-
-	r := gin.Default() // Inisialisasi Gin router
-
-	// Konfigurasi Middleware CORS
-	// SESUAIKAN INI UNTUK PRODUCTION!
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Definisikan endpoint API untuk Profile
-	api := r.Group("/api/profile") // Menggunakan path /api/profile
-	{
-		api.GET("/", getAllProfiles)      // GET /api/profile/
-		api.GET("/:id", getProfileByID)   // GET /api/profile/:id
-		api.POST("/", createProfile)      // POST /api/profile/
-		api.PUT("/:id", updateProfile)    // PUT /api/profile/:id
-		api.DELETE("/:id", deleteProfile) // DELETE /api/profile/:id
-
-		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk mengelola:
-		// - Data Education dan Experience secara individual
-		// - Penautan Profile dengan Personalia (jika tidak dikelola sepenuhnya via endpoint Personalia)
-	}
-
-	log.Println("Server berjalan di http://localhost:8080")
-	log.Fatal(r.Run(":8080")) // Jalankan server
+func RegisterRoutes(rg *gin.RouterGroup) {
+	api := rg
+	api.GET("/", getAllProfiles)
+	api.GET("/:id", getProfileByID)
+	api.POST("/", createProfile)
+	api.PUT("/:id", updateProfile)
+	api.DELETE("/:id", deleteProfile)
 }

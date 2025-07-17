@@ -42,7 +42,7 @@ export default function Rekayasa() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  axios.get('/api/qc/rekayasa')
+  axios.get('/api/rekayasa')
     .then((res) => {
       const data = res.data;
       if (Array.isArray(data)) {

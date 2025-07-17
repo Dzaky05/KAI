@@ -1,4 +1,4 @@
-package main
+package rekayasa
 
 import (
 	"log"
@@ -6,10 +6,8 @@ import (
 	"strconv"
 	"time" // Import time package
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -18,20 +16,16 @@ import (
 // PersonaliaPartial mewakili data Personalia yang relevan untuk relasi tim
 // Kita hanya perlu ID dan mungkin field identifikasi seperti NIP atau Nama jika ada di tabel Personalia.
 type PersonaliaPartial struct {
-	gorm.Model
-	PersonaliaID int `json:"personalia_id" gorm:"column:personalia_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
-	// Jika nama ada di tabel Personalia dan ingin disertakan:
-	// Name string `json:"name" gorm:"column:nama_kolom_nama_personalia"` // Contoh
-	// Jika NIP ingin disertakan:
-	// NIP string `json:"nip" gorm:"column:nip"` // Contoh
+	PersonaliaID uint   `json:"personalia_id" gorm:"column:personalia_id;primaryKey;index"`
+	NIP          string `json:"nip" gorm:"column:nip"`
 }
 
 // RekayasaTeam adalah tabel pivot untuk relasi Many-to-Many antara Rekayasa dan Personalia
 type RekayasaTeam struct {
 	gorm.Model
 	RekayasaTeamID int  `gorm:"column:rekayasa_team_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
-	RekayasaID     uint `gorm:"column:rekayasa_id"`
-	PersonaliaID   uint `gorm:"column:personalia_id"`
+	RekayasaID     uint `gorm:"column:rekayasa_id;index"`
+	PersonaliaID   uint `gorm:"column:personalia_id;index"`
 }
 
 // Rekayasa mewakili struktur data untuk item rekayasa
@@ -51,7 +45,9 @@ type Rekayasa struct {
 	// Relasi Many-to-Many: Rekayasa memiliki banyak Personalia melalui tabel pivot RekayasaTeam
 	// Tag `many2many:rekayasa_team` memberitahu GORM untuk menggunakan tabel pivot tersebut.
 	// Tag `joinTable` dan `joinForeignKey`/`references` memberikan detail eksplisit.
-	TeamMembers []PersonaliaPartial `json:"team,omitempty" gorm:"many2many:rekayasa_team;joinTable:rekayasa_team;joinForeignKey:rekayasa_id;references:personalia_id"`
+	TeamMembers  []PersonaliaPartial `json:"team,omitempty" gorm:"many2many:rekayasa_team;joinTable:rekayasa_team;joinForeignKey:rekayasa_id;references:personalia_id"`
+	ProgressText string              `json:"progress_text" gorm:"-"` // untuk diparse ke int
+	Team         []string            `json:"team" gorm:"-"`          // untuk menampilkan ke frontend
 
 	// Catatan tentang field 'team' TEXT dan 'progress' VARCHAR di DB vs frontend:
 	// Frontend menggunakan `team` sebagai array string (inisial) dan `progress` sebagai integer (persentase).
@@ -68,26 +64,10 @@ type Rekayasa struct {
 	// Kolom `progress` di DB akan dipetakan ke `ProgressText`.
 }
 
-var db *gorm.DB // Menggunakan GORM DB instance
+var db *gorm.DB
 
-// initDatabase melakukan koneksi awal ke database menggunakan GORM
-func initDatabase() {
-	var err error
-	// Pastikan detail koneksi sesuai dengan konfigurasi database Anda
-	// Ganti "root:@tcp(localhost:3306)/kai_db" jika perlu
-	dsn := "root:@tcp(localhost:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("Gagal koneksi database: %v", err)
-	}
-
-	// AutoMigrate akan membuat atau memperbarui tabel Rekayasa, RekayasaTeam, PersonaliaPartial
-	err = db.AutoMigrate(&Rekayasa{}, &RekayasaTeam{}, &PersonaliaPartial{}) // Migrasi tabel pivot dan PersonaliaPartial
-	if err != nil {
-		log.Fatalf("Gagal migrasi database untuk Rekayasa/relasi: %v", err)
-	}
-
-	log.Println("Koneksi database dan migrasi Rekayasa/relasi berhasil!")
+func Init(database *gorm.DB) {
+	db = database
 }
 
 // calculateProgressPercentage mengasumsikan ada kolom lain di database untuk menghitung progres,
@@ -194,6 +174,15 @@ func createRekayasa(c *gin.Context) {
 	// Jika rekayasa_id di database auto-increment, atur ke 0
 	newItem.RekayasaID = 0
 
+	var teamMembers []PersonaliaPartial
+	for _, nip := range newItem.Team {
+		var member PersonaliaPartial
+		if err := db.Where("nip = ?", nip).First(&member).Error; err == nil {
+			teamMembers = append(teamMembers, member)
+		}
+	}
+	newItem.TeamMembers = teamMembers
+
 	// *** Penanganan Relasi Many-to-Many TeamMembers saat Create:
 	// Frontend mengirimkan array string `team`. Database menggunakan relasi Many-to-Many ke `personalia`.
 	// Anda perlu logika untuk:
@@ -269,6 +258,14 @@ func updateRekayasa(c *gin.Context) {
 	item.Status = updatedItem.Status
 	item.Deadline = updatedItem.Deadline
 	// Update field lain jika ada (TeamText, ProgressText)
+	var teamMembers []PersonaliaPartial
+	for _, nip := range updatedItem.Team {
+		var member PersonaliaPartial
+		if err := db.Where("nip = ?", nip).First(&member).Error; err == nil {
+			teamMembers = append(teamMembers, member)
+		}
+	}
+	updatedItem.TeamMembers = teamMembers
 
 	// *** Penanganan Relasi Many-to-Many TeamMembers saat Update:
 	// Frontend mengirimkan array string `team` baru.
@@ -335,32 +332,10 @@ func deleteRekayasa(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil) // 204 No Content
 }
 
-func main() {
-	initDatabase() // Panggil fungsi inisialisasi database dan migrasi
-
-	r := gin.Default() // Inisialisasi Gin router
-
-	// Konfigurasi Middleware CORS
-	// SESUAIKAN INI UNTUK PRODUCTION!
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true // Izinkan dari semua origin (untuk development)
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Definisikan endpoint API untuk Rekayasa
-	api := r.Group("/api/rekayasa") // Menggunakan path /api/rekayasa
-	{
-		api.GET("/", getAllRekayasa)       // GET /api/rekayasa/
-		api.GET("/:id", getRekayasaByID)   // GET /api/rekayasa/:id
-		api.POST("/", createRekayasa)      // POST /api/rekayasa/
-		api.PUT("/:id", updateRekayasa)    // PUT /api/rekayasa/:id
-		api.DELETE("/:id", deleteRekayasa) // DELETE /api/rekayasa/:id
-
-		// *** Catatan: Endpoint terpisah mungkin diperlukan untuk mengelola:
-		// - Anggota tim rekayasa secara individual (menambah/menghapus dari RekayasaTeam)
-	}
-
-	log.Println("Server berjalan di http://localhost:8080")
-	log.Fatal(r.Run(":8080")) // Jalankan server
+func RegisterRoutes(r *gin.RouterGroup) {
+	r.GET("/", getAllRekayasa)
+	r.GET("/:id", getRekayasaByID)
+	r.POST("/", createRekayasa)
+	r.PUT("/:id", updateRekayasa)
+	r.DELETE("/:id", deleteRekayasa)
 }
