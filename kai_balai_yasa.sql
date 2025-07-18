@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Waktu pembuatan: 16 Jul 2025 pada 18.29
--- Versi server: 10.4.32-MariaDB
--- Versi PHP: 8.2.12
+-- Generation Time: Jul 17, 2025 at 04:27 PM
+-- Server version: 10.4.32-MariaDB
+-- PHP Version: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -24,7 +24,7 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `calibration`
+-- Table structure for table `calibration`
 --
 
 CREATE TABLE `calibration` (
@@ -40,7 +40,7 @@ CREATE TABLE `calibration` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `education`
+-- Table structure for table `education`
 --
 
 CREATE TABLE `education` (
@@ -53,7 +53,7 @@ CREATE TABLE `education` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `experience`
+-- Table structure for table `experience`
 --
 
 CREATE TABLE `experience` (
@@ -65,7 +65,7 @@ CREATE TABLE `experience` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `history`
+-- Table structure for table `history`
 --
 
 CREATE TABLE `history` (
@@ -77,7 +77,7 @@ CREATE TABLE `history` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `inventory`
+-- Table structure for table `inventory`
 --
 
 CREATE TABLE `inventory` (
@@ -92,7 +92,7 @@ CREATE TABLE `inventory` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `materials`
+-- Table structure for table `materials`
 --
 
 CREATE TABLE `materials` (
@@ -106,7 +106,7 @@ CREATE TABLE `materials` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `overhaul`
+-- Table structure for table `overhaul`
 --
 
 CREATE TABLE `overhaul` (
@@ -125,12 +125,12 @@ CREATE TABLE `overhaul` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `personalia`
+-- Table structure for table `personalia`
 --
 
 CREATE TABLE `personalia` (
   `personalia_id` int(11) NOT NULL,
-  `nip` int(11) DEFAULT NULL,
+  `nip` varchar(50) DEFAULT NULL,
   `jabatan` varchar(50) DEFAULT NULL,
   `divisi` varchar(100) DEFAULT NULL,
   `lokasi` varchar(100) DEFAULT NULL,
@@ -141,10 +141,18 @@ CREATE TABLE `personalia` (
   `profile_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `personalia`
+--
+
+INSERT INTO `personalia` (`personalia_id`, `nip`, `jabatan`, `divisi`, `lokasi`, `status`, `join_date`, `phone_number`, `urgent_number`, `profile_id`) VALUES
+(1, '103012400165', 'Pegawai', 'Enginering', NULL, 'Aktif', '2025-06-20', '081234898981', '082345789029', NULL),
+(2, '103012400141', 'Asisten Manager', 'Enginering', NULL, 'Aktif', '2025-06-20', '081246991181', '082237937470', NULL);
+
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `produksi`
+-- Table structure for table `produksi`
 --
 
 CREATE TABLE `produksi` (
@@ -157,13 +165,23 @@ CREATE TABLE `produksi` (
   `end_date` varchar(50) DEFAULT NULL,
   `materials_id` int(11) DEFAULT NULL,
   `progress_id` int(11) DEFAULT NULL,
-  `inventory_id` int(11) DEFAULT NULL
+  `inventory_id` int(11) DEFAULT NULL,
+  `personnel_data` text DEFAULT NULL,
+  `materials_data` text DEFAULT NULL,
+  `progress_data` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `produksi`
+--
+
+INSERT INTO `produksi` (`produksi_id`, `name`, `target`, `completed`, `status`, `start_date`, `end_date`, `materials_id`, `progress_id`, `inventory_id`, `personnel_data`, `materials_data`, `progress_data`) VALUES
+(1, 'OVERHAUL', 20, 0, 'Selesai', '2025-07-17', '2025-08-17', NULL, NULL, NULL, '[\"103012400141\"]', '[{\"id\":0,\"name\":\"REL\",\"qty\":20,\"harga\":100000000,\"satuan\":\"unit\"}]', '');
 
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `produksi_team`
+-- Table structure for table `produksi_team`
 --
 
 CREATE TABLE `produksi_team` (
@@ -175,14 +193,14 @@ CREATE TABLE `produksi_team` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `profile`
+-- Table structure for table `profile`
 --
 
 CREATE TABLE `profile` (
   `profile_id` int(11) NOT NULL,
-  `email` varchar(100) DEFAULT NULL,
-  `address` varchar(100) DEFAULT NULL,
-  `phone_number` varchar(50) DEFAULT NULL,
+  `email` longtext DEFAULT NULL,
+  `address` longtext DEFAULT NULL,
+  `phone_number` longtext DEFAULT NULL,
   `education_id` int(11) DEFAULT NULL,
   `experience_id` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -190,7 +208,7 @@ CREATE TABLE `profile` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `progress`
+-- Table structure for table `progress`
 --
 
 CREATE TABLE `progress` (
@@ -203,7 +221,7 @@ CREATE TABLE `progress` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `quality_control`
+-- Table structure for table `quality_control`
 --
 
 CREATE TABLE `quality_control` (
@@ -224,7 +242,7 @@ CREATE TABLE `quality_control` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `rekayasa`
+-- Table structure for table `rekayasa`
 --
 
 CREATE TABLE `rekayasa` (
@@ -239,7 +257,7 @@ CREATE TABLE `rekayasa` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `rekayasa_team`
+-- Table structure for table `rekayasa_team`
 --
 
 CREATE TABLE `rekayasa_team` (
@@ -251,7 +269,7 @@ CREATE TABLE `rekayasa_team` (
 -- --------------------------------------------------------
 
 --
--- Struktur dari tabel `stock_production`
+-- Table structure for table `stock_production`
 --
 
 CREATE TABLE `stock_production` (
@@ -270,44 +288,44 @@ CREATE TABLE `stock_production` (
 --
 
 --
--- Indeks untuk tabel `calibration`
+-- Indexes for table `calibration`
 --
 ALTER TABLE `calibration`
   ADD PRIMARY KEY (`calibration_id`),
   ADD KEY `inventory_id` (`inventory_id`);
 
 --
--- Indeks untuk tabel `education`
+-- Indexes for table `education`
 --
 ALTER TABLE `education`
   ADD PRIMARY KEY (`education_id`);
 
 --
--- Indeks untuk tabel `experience`
+-- Indexes for table `experience`
 --
 ALTER TABLE `experience`
   ADD PRIMARY KEY (`experience_id`);
 
 --
--- Indeks untuk tabel `history`
+-- Indexes for table `history`
 --
 ALTER TABLE `history`
   ADD PRIMARY KEY (`history_id`);
 
 --
--- Indeks untuk tabel `inventory`
+-- Indexes for table `inventory`
 --
 ALTER TABLE `inventory`
   ADD PRIMARY KEY (`inventory_id`);
 
 --
--- Indeks untuk tabel `materials`
+-- Indexes for table `materials`
 --
 ALTER TABLE `materials`
   ADD PRIMARY KEY (`materials_id`);
 
 --
--- Indeks untuk tabel `overhaul`
+-- Indexes for table `overhaul`
 --
 ALTER TABLE `overhaul`
   ADD PRIMARY KEY (`overhaul_id`),
@@ -317,14 +335,14 @@ ALTER TABLE `overhaul`
   ADD KEY `history_id` (`history_id`);
 
 --
--- Indeks untuk tabel `personalia`
+-- Indexes for table `personalia`
 --
 ALTER TABLE `personalia`
   ADD PRIMARY KEY (`personalia_id`),
   ADD KEY `profile_id` (`profile_id`);
 
 --
--- Indeks untuk tabel `produksi`
+-- Indexes for table `produksi`
 --
 ALTER TABLE `produksi`
   ADD PRIMARY KEY (`produksi_id`),
@@ -333,7 +351,7 @@ ALTER TABLE `produksi`
   ADD KEY `fk_inventory_id` (`inventory_id`);
 
 --
--- Indeks untuk tabel `produksi_team`
+-- Indexes for table `produksi_team`
 --
 ALTER TABLE `produksi_team`
   ADD PRIMARY KEY (`produksi_team_id`),
@@ -341,7 +359,7 @@ ALTER TABLE `produksi_team`
   ADD KEY `personalia_id` (`personalia_id`);
 
 --
--- Indeks untuk tabel `profile`
+-- Indexes for table `profile`
 --
 ALTER TABLE `profile`
   ADD PRIMARY KEY (`profile_id`),
@@ -349,13 +367,13 @@ ALTER TABLE `profile`
   ADD KEY `experience_id` (`experience_id`);
 
 --
--- Indeks untuk tabel `progress`
+-- Indexes for table `progress`
 --
 ALTER TABLE `progress`
   ADD PRIMARY KEY (`progress_id`);
 
 --
--- Indeks untuk tabel `quality_control`
+-- Indexes for table `quality_control`
 --
 ALTER TABLE `quality_control`
   ADD PRIMARY KEY (`qc_id`),
@@ -365,13 +383,13 @@ ALTER TABLE `quality_control`
   ADD KEY `inventory_id` (`inventory_id`);
 
 --
--- Indeks untuk tabel `rekayasa`
+-- Indexes for table `rekayasa`
 --
 ALTER TABLE `rekayasa`
   ADD PRIMARY KEY (`rekayasa_id`);
 
 --
--- Indeks untuk tabel `rekayasa_team`
+-- Indexes for table `rekayasa_team`
 --
 ALTER TABLE `rekayasa_team`
   ADD PRIMARY KEY (`rekayasa_team_id`),
@@ -379,7 +397,7 @@ ALTER TABLE `rekayasa_team`
   ADD KEY `rekayasa_id` (`rekayasa_id`);
 
 --
--- Indeks untuk tabel `stock_production`
+-- Indexes for table `stock_production`
 --
 ALTER TABLE `stock_production`
   ADD PRIMARY KEY (`stock_id`),
@@ -387,117 +405,117 @@ ALTER TABLE `stock_production`
   ADD KEY `produksi_id` (`produksi_id`);
 
 --
--- AUTO_INCREMENT untuk tabel yang dibuang
+-- AUTO_INCREMENT for dumped tables
 --
 
 --
--- AUTO_INCREMENT untuk tabel `calibration`
+-- AUTO_INCREMENT for table `calibration`
 --
 ALTER TABLE `calibration`
   MODIFY `calibration_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `education`
+-- AUTO_INCREMENT for table `education`
 --
 ALTER TABLE `education`
   MODIFY `education_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `experience`
+-- AUTO_INCREMENT for table `experience`
 --
 ALTER TABLE `experience`
   MODIFY `experience_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `history`
+-- AUTO_INCREMENT for table `history`
 --
 ALTER TABLE `history`
   MODIFY `history_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `inventory`
+-- AUTO_INCREMENT for table `inventory`
 --
 ALTER TABLE `inventory`
   MODIFY `inventory_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `materials`
+-- AUTO_INCREMENT for table `materials`
 --
 ALTER TABLE `materials`
   MODIFY `materials_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `overhaul`
+-- AUTO_INCREMENT for table `overhaul`
 --
 ALTER TABLE `overhaul`
   MODIFY `overhaul_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `personalia`
+-- AUTO_INCREMENT for table `personalia`
 --
 ALTER TABLE `personalia`
-  MODIFY `personalia_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `personalia_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
--- AUTO_INCREMENT untuk tabel `produksi`
+-- AUTO_INCREMENT for table `produksi`
 --
 ALTER TABLE `produksi`
-  MODIFY `produksi_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `produksi_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
--- AUTO_INCREMENT untuk tabel `produksi_team`
+-- AUTO_INCREMENT for table `produksi_team`
 --
 ALTER TABLE `produksi_team`
   MODIFY `produksi_team_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `profile`
+-- AUTO_INCREMENT for table `profile`
 --
 ALTER TABLE `profile`
   MODIFY `profile_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `progress`
+-- AUTO_INCREMENT for table `progress`
 --
 ALTER TABLE `progress`
   MODIFY `progress_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `quality_control`
+-- AUTO_INCREMENT for table `quality_control`
 --
 ALTER TABLE `quality_control`
   MODIFY `qc_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `rekayasa`
+-- AUTO_INCREMENT for table `rekayasa`
 --
 ALTER TABLE `rekayasa`
   MODIFY `rekayasa_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `rekayasa_team`
+-- AUTO_INCREMENT for table `rekayasa_team`
 --
 ALTER TABLE `rekayasa_team`
   MODIFY `rekayasa_team_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT untuk tabel `stock_production`
+-- AUTO_INCREMENT for table `stock_production`
 --
 ALTER TABLE `stock_production`
   MODIFY `stock_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- Ketidakleluasaan untuk tabel pelimpahan (Dumped Tables)
+-- Constraints for dumped tables
 --
 
 --
--- Ketidakleluasaan untuk tabel `calibration`
+-- Constraints for table `calibration`
 --
 ALTER TABLE `calibration`
   ADD CONSTRAINT `calibration_ibfk_1` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`);
 
 --
--- Ketidakleluasaan untuk tabel `overhaul`
+-- Constraints for table `overhaul`
 --
 ALTER TABLE `overhaul`
   ADD CONSTRAINT `history_id` FOREIGN KEY (`history_id`) REFERENCES `history` (`history_id`),
@@ -506,13 +524,13 @@ ALTER TABLE `overhaul`
   ADD CONSTRAINT `overhaul_ibfk_2` FOREIGN KEY (`materials_id`) REFERENCES `materials` (`materials_id`);
 
 --
--- Ketidakleluasaan untuk tabel `personalia`
+-- Constraints for table `personalia`
 --
 ALTER TABLE `personalia`
   ADD CONSTRAINT `profile_id` FOREIGN KEY (`profile_id`) REFERENCES `profile` (`profile_id`);
 
 --
--- Ketidakleluasaan untuk tabel `produksi`
+-- Constraints for table `produksi`
 --
 ALTER TABLE `produksi`
   ADD CONSTRAINT `fk_inventory_id` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`),
@@ -520,21 +538,21 @@ ALTER TABLE `produksi`
   ADD CONSTRAINT `progress_id` FOREIGN KEY (`progress_id`) REFERENCES `progress` (`progress_id`);
 
 --
--- Ketidakleluasaan untuk tabel `produksi_team`
+-- Constraints for table `produksi_team`
 --
 ALTER TABLE `produksi_team`
   ADD CONSTRAINT `produksi_team_ibfk_1` FOREIGN KEY (`produksi_id`) REFERENCES `produksi` (`produksi_id`),
   ADD CONSTRAINT `produksi_team_ibfk_2` FOREIGN KEY (`personalia_id`) REFERENCES `personalia` (`personalia_id`);
 
 --
--- Ketidakleluasaan untuk tabel `profile`
+-- Constraints for table `profile`
 --
 ALTER TABLE `profile`
-  ADD CONSTRAINT `education_id` FOREIGN KEY (`education_id`) REFERENCES `education` (`education_id`),
-  ADD CONSTRAINT `experience_id` FOREIGN KEY (`experience_id`) REFERENCES `experience` (`experience_id`);
+  ADD CONSTRAINT `experience_id` FOREIGN KEY (`experience_id`) REFERENCES `experience` (`experience_id`),
+  ADD CONSTRAINT `fk_personalia_profile` FOREIGN KEY (`profile_id`) REFERENCES `personalia` (`personalia_id`);
 
 --
--- Ketidakleluasaan untuk tabel `quality_control`
+-- Constraints for table `quality_control`
 --
 ALTER TABLE `quality_control`
   ADD CONSTRAINT `quality_control_ibfk_1` FOREIGN KEY (`produksi_id`) REFERENCES `produksi` (`produksi_id`),
@@ -543,14 +561,14 @@ ALTER TABLE `quality_control`
   ADD CONSTRAINT `quality_control_ibfk_4` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`);
 
 --
--- Ketidakleluasaan untuk tabel `rekayasa_team`
+-- Constraints for table `rekayasa_team`
 --
 ALTER TABLE `rekayasa_team`
   ADD CONSTRAINT `rekayasa_team_ibfk_1` FOREIGN KEY (`personalia_id`) REFERENCES `personalia` (`personalia_id`),
   ADD CONSTRAINT `rekayasa_team_ibfk_2` FOREIGN KEY (`rekayasa_id`) REFERENCES `rekayasa` (`rekayasa_id`);
 
 --
--- Ketidakleluasaan untuk tabel `stock_production`
+-- Constraints for table `stock_production`
 --
 ALTER TABLE `stock_production`
   ADD CONSTRAINT `stock_production_ibfk_1` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`),

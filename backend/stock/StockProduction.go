@@ -37,6 +37,16 @@ type StockProduction struct {
 	Produksi  *Produksi  `json:"produksi,omitempty" gorm:"foreignKey:ProduksiID;references:ProduksiID"`
 }
 
+func (StockProduction) TableName() string {
+	return "stock_production"
+}
+func (Produksi) TableName() string {
+	return "produksi"
+}
+func (Inventory) TableName() string {
+	return "inventory"
+}
+
 var db *gorm.DB
 
 func Init(database *gorm.DB) {

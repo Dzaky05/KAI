@@ -5,8 +5,11 @@ import (
 	"log"
 	"time"
 
+	"os"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
@@ -54,8 +57,14 @@ func connectDB(dsn string) *gorm.DB {
 func main() {
 	fmt.Println("🚀 Menjalankan semua modul backend...")
 
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("❌ Gagal memuat file .env")
+	}
+
 	// 1. Koneksi Database
-	dsn := "root:root@tcp(db:3306)/kai_balai_yasa?charset=utf8mb4&parseTime=True&loc=Local"
+
+	dsn := os.Getenv("DB_DSN")
 	db := connectDB(dsn)
 
 	// 2. Inisialisasi Gin

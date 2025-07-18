@@ -1,17 +1,18 @@
-
-import React, { useState, useEffect } from 'react'; // Import useEffect
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import LinearProgress from '@mui/material/LinearProgress';
 import {
   Box, Typography, Card, CardContent, Grid, Stepper, Step, StepLabel,
   Button, Divider, Chip, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton, Tooltip, Snackbar, Alert, // Import Snackbar, Alert
-  FormControl, InputLabel, Select, MenuItem // Added for potential future use in forms
+  IconButton, Tooltip, Snackbar, Alert,
+  FormControl, InputLabel, Select, MenuItem, DialogContentText,
+  CircularProgress
 } from "@mui/material";
 import {
-  Science as ScienceIcon, CheckCircle, Schedule, Error, Add, Edit, Delete, Close // Import Add, Edit, Delete, Close
+  Science as ScienceIcon, CheckCircle, Schedule, Error, Add, Edit, Delete, Close,
+  Warning as WarningIcon
 } from "@mui/icons-material";
-import WarningIcon from '@mui/icons-material/Warning'; // Import WarningIcon
+import { format } from 'date-fns'; // Untuk memformat tanggal
 
 const steps = [
   'Penerimaan Alat',
@@ -21,237 +22,239 @@ const steps = [
   'Sertifikasi'
 ];
 
-// Data statis asli (akan tetap ada)
-const initialStaticCalibrationData = [
-  { id: 1, name: "Multimeter Digital", status: "Dalam Proses", progress: 2, dueDate: "2023-12-15" },
-  { id: 2, name: "Oscilloscope", status: "Selesai", progress: 5, dueDate: "2023-11-30" },
-  { id: 3, name: "Signal Generator", status: "Belum Dimulai", progress: 0, dueDate: "2024-01-10" },
-  { id: 4, name: "Power Supply", status: "Dalam Proses", progress: 3, dueDate: "2023-12-05" },
-];
-
-
-// URL endpoint backend Go Anda
-const API_URL = 'http://localhost:8080/api/kalibrasi'; // Ganti jika backend berjalan di URL/port lain
-
+// URL endpoint backend Go Anda, menggunakan variabel lingkungan
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_URL = `${API_BASE_URL}/api/kalibrasi`;
+const INVENTORY_API_URL = `${API_BASE_URL}/api/inventory`; // URL untuk mengambil data inventory
 
 export default function Kalibrasi() {
-  // State aktif step (dari kode asli)
-  const [activeStep, setActiveStep] = React.useState(2);
+  const [activeStep, setActiveStep] = useState(2); // Default step untuk tampilan stepper
 
-  // --- State untuk Data ---
-  // State untuk data yang diambil dari backend
+  // State untuk data kalibrasi dari backend
   const [backendCalibrationData, setBackendCalibrationData] = useState([]);
-  // State untuk status loading saat fetch
   const [loading, setLoading] = useState(true);
-  // State untuk error saat fetch
   const [error, setError] = useState(null);
-  // Data yang akan ditampilkan (mengutamakan data backend, fallback ke statis)
-  const displayedCalibrationData = backendCalibrationData.length > 0 ? backendCalibrationData : initialStaticCalibrationData;
 
-  // --- State untuk Form Tambah Alat ---
-  const [newTool, setNewTool] = useState({ name: '', dueDate: '' }); // Form data untuk tambah
-  const [openAddDialog, setOpenAddDialog] = useState(false); // Kontrol dialog tambah
+  // State untuk daftar inventory dari backend (untuk dropdown)
+  const [inventoryOptions, setInventoryOptions] = useState([]);
+  const [loadingInventoryOptions, setLoadingInventoryOptions] = useState(true);
+  const [errorInventoryOptions, setErrorInventoryOptions] = useState(null);
 
+  // State untuk Form Tambah Alat
+  const [newTool, setNewTool] = useState({ name: '', dueDate: '', inventory_id: '' });
+  const [openAddDialog, setOpenAddDialog] = useState(false);
 
-  // --- State untuk Form Edit Alat ---
-  const [editMode, setEditMode] = useState(false); // Mode edit atau tambah
-  const [openEditDialog, setOpenEditDialog] = useState(false); // Kontrol dialog edit
-  // State untuk data form edit
+  // State untuk Form Edit Alat
+  const [openEditDialog, setOpenEditDialog] = useState(false);
   const [editFormData, setEditFormData] = useState({
-    id: null, name: '', status: '', progress: '', dueDate: '' // ID merujuk ke ID database
+    id: null, name: '', status: '', progress: '', dueDate: '', inventory_id: ''
   });
 
-
-  // --- State untuk Konfirmasi Hapus ---
+  // State untuk Konfirmasi Hapus
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
-  const [itemToDeleteId, setItemToDeleteId] = useState(null); // ID item yang akan dihapus
-  const [itemToDeleteName, setItemToDeleteName] = useState(''); // Nama item yang akan dihapus
+  const [itemToDeleteId, setItemToDeleteId] = useState(null);
+  const [itemToDeleteName, setItemToDeleteName] = useState('');
 
-
-  // --- State untuk Snackbar ---
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); // State Snackbar
-
+  // State untuk Snackbar notifikasi
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   // --- Fungsi Koneksi Backend ---
 
-  // Fungsi untuk mengambil data dari backend
+  // Fungsi untuk mengambil data kalibrasi dari backend
   const fetchCalibrations = async () => {
-    setLoading(true); // Set loading menjadi true
-    setError(null); // Reset error
+    setLoading(true);
+    setError(null);
     try {
       const response = await axios.get(API_URL);
-       // Berdasarkan kode Go, backend mengembalikan array Calibration
       setBackendCalibrationData(response.data);
     } catch (err) {
       console.error("Error fetching calibrations:", err);
-      setError(err); // Simpan error di state
-      setSnackbar({ open: true, message: `Gagal memuat data: ${err.message}`, severity: 'error' });
-       setBackendCalibrationData([]); // Kosongkan data backend jika fetch gagal
+      setError(err);
+      setSnackbar({ open: true, message: `Gagal memuat data kalibrasi: ${err.message}`, severity: 'error' });
+      setBackendCalibrationData([]); // Kosongkan data backend jika fetch gagal
     } finally {
-      setLoading(false); // Set loading menjadi false
+      setLoading(false);
     }
   };
 
-  // --- useEffect untuk Memuat Data ---
-  useEffect(() => {
-    fetchCalibrations(); // Ambil data saat komponen pertama kali dimuat
-  }, []); // Dependency array kosong berarti efek ini hanya dijalankan sekali saat mount
+  // Fungsi untuk mengambil data inventory dari backend (untuk dropdown)
+  const fetchInventoryOptions = async () => {
+    setLoadingInventoryOptions(true);
+    setErrorInventoryOptions(null);
+    try {
+      const response = await axios.get(INVENTORY_API_URL);
+      if (Array.isArray(response.data)) {
+        setInventoryOptions(response.data);
+      } else {
+        throw new Error("Format data inventory tidak sesuai.");
+      }
+    } catch (err) {
+      console.error("Error fetching inventory options:", err);
+      setErrorInventoryOptions(err);
+      setSnackbar({ open: true, message: `Gagal memuat opsi inventory: ${err.message || "Terjadi kesalahan."}`, severity: "error" });
+    } finally {
+      setLoadingInventoryOptions(false);
+    }
+  };
 
+  // --- useEffect untuk Memuat Data Saat Komponen Dimuat ---
+  useEffect(() => {
+    fetchCalibrations();
+    fetchInventoryOptions(); // Ambil data inventory saat komponen dimuat
+  }, []);
+
+  // Data yang akan ditampilkan (saat ini langsung dari backend)
+  const displayedCalibrationData = backendCalibrationData;
 
   // --- Handler untuk Operasi CRUD ---
 
-  // Handler untuk membuka dialog Tambah Alat
+  // Membuka dialog Tambah Alat
   const handleOpenAddDialog = () => {
-    setEditMode(false); // Mode tambah
-    setNewTool({ name: '', dueDate: '' }); // Reset form tambah
+    setNewTool({ name: '', dueDate: format(new Date(), 'yyyy-MM-dd'), inventory_id: '' }); // Reset form dan set tanggal default
     setOpenAddDialog(true);
   };
 
-   // Handler untuk menutup dialog Tambah Alat dan mereset form
+  // Menutup dialog Tambah Alat
   const handleCloseAddDialog = () => {
     setOpenAddDialog(false);
-    setNewTool({ name: '', dueDate: '' }); // Reset form tambah
+    setNewTool({ name: '', dueDate: '', inventory_id: '' });
   };
 
-  // Handler untuk input form Tambah Alat
-   const handleNewToolChange = (e) => {
+  // Menangani perubahan input di form Tambah Alat
+  const handleNewToolChange = (e) => {
     const { name, value } = e.target;
     setNewTool(prev => ({ ...prev, [name]: value }));
   };
 
-
-  // Handler untuk menambah alat baru (Menggunakan Axios POST)
+  // Menambah alat baru ke backend
   const handleAddTool = async () => {
     if (!newTool.name || !newTool.dueDate) {
       setSnackbar({ open: true, message: "Nama dan Tanggal wajib diisi!", severity: "error" });
       return;
     }
 
+    const itemToSave = {
+      name: newTool.name,
+      status: "Belum Dimulai", // Status awal default
+      progress: 0,            // Progres awal default
+      dueDate: newTool.dueDate,
+      // Kirim null jika inventory_id kosong, atau parse ke integer
+      inventory_id: newTool.inventory_id === '' ? null : parseInt(newTool.inventory_id, 10),
+    };
+
     try {
-      // Kirim data ke backend
-      const response = await axios.post(API_URL, {
-        name: newTool.name,
-        status: "Belum Dimulai", // Status awal
-        progress: 0,           // Progres awal
-        dueDate: newTool.dueDate
-        // Jika ada foreign key inventory_id yang perlu dikirim, tambahkan di sini
-      });
-
-       // Berdasarkan kode Go, backend mengembalikan item yang baru dibuat dengan ID terisi
+      const response = await axios.post(API_URL, itemToSave);
       console.log("Item added successfully:", response.data);
-
       setSnackbar({ open: true, message: "Alat berhasil ditambahkan", severity: "success" });
-      handleCloseAddDialog(); // Tutup dialog tambah
-      fetchCalibrations(); // Ambil ulang data dari backend untuk memperbarui tampilan
-
+      handleCloseAddDialog();
+      fetchCalibrations(); // Ambil ulang data untuk memperbarui tampilan
     } catch (err) {
       console.error("Error adding tool:", err);
-       const errorMessage = err.response?.data?.error || err.message || "Gagal menambahkan alat";
+      const errorMessage = err.response?.data?.error || err.message || "Gagal menambahkan alat";
       setSnackbar({ open: true, message: errorMessage, severity: "error" });
     }
   };
 
-  // Handler untuk membuka dialog Edit Alat
+  // Membuka dialog Edit Alat
   const handleOpenEditDialog = (item) => {
-    setEditMode(true); // Mode edit
-    // Isi form edit dengan data item yang dipilih
     setEditFormData({
-      id: item.id, // Menggunakan ID database
+      id: item.id,
       name: item.name || '',
       status: item.status || '',
-      progress: item.progress || 0, // Progres dari backend
-      dueDate: item.dueDate ? item.dueDate.split('T')[0] : '', // Format tanggal yyyy-MM-dd untuk input date
+      progress: item.progress || 0,
+      // Format tanggal dari backend (ISO string) ke 'yyyy-MM-dd' untuk input type="date"
+      dueDate: item.dueDate ? format(new Date(item.dueDate), 'yyyy-MM-dd') : '',
+      // Pastikan inventory_id diset ke ID atau string kosong jika null
+      inventory_id: item.inventory_id || ''
     });
     setOpenEditDialog(true);
   };
 
-  // Handler untuk menutup dialog Edit Alat dan mereset form
-   const handleCloseEditDialog = () => {
+  // Menutup dialog Edit Alat
+  const handleCloseEditDialog = () => {
     setOpenEditDialog(false);
-     setEditFormData({ id: null, name: '', status: '', progress: '', dueDate: '' }); // Reset form edit
+    setEditFormData({ id: null, name: '', status: '', progress: '', dueDate: '', inventory_id: '' });
   };
 
-   // Handler untuk input form Edit Alat
+  // Menangani perubahan input di form Edit Alat
   const handleEditFormChange = (e) => {
     const { name, value } = e.target;
-    setEditFormData(prevData => ({
-      ...prevData,
-      [name]: value,
-    }));
+    let newValue = value;
+
+    if (name === 'progress') {
+      newValue = Number(value);
+      if (isNaN(newValue)) newValue = 0; // Default ke 0 jika bukan angka
+    } else if (name === 'inventory_id') {
+      // Kirim null jika dropdown dipilih "Tidak ada", atau parse ke integer
+      newValue = value === '' ? null : parseInt(value, 10);
+    }
+    setEditFormData(prevData => ({ ...prevData, [name]: newValue }));
   };
 
-
-  // Handler untuk menyimpan perubahan alat (Menggunakan Axios PUT)
+  // Menyimpan perubahan alat ke backend
   const handleSaveEdit = async () => {
-     if (!editFormData.name || !editFormData.status || !editFormData.dueDate || editFormData.progress === '' ) {
+    if (!editFormData.name || !editFormData.status || !editFormData.dueDate || editFormData.progress === '' ) {
       setSnackbar({ open: true, message: "Semua kolom wajib diisi!", severity: "error" });
       return;
     }
 
-     // Pastikan progress adalah angka
     const progressNumber = Number(editFormData.progress);
-    if (isNaN(progressNumber) || progressNumber < 0 || progressNumber > steps.length) {
-         setSnackbar({ open: true, message: `Progres harus angka antara 0 dan ${steps.length}`, severity: "error" });
-        return;
+    // Validasi progress step sesuai jumlah langkah
+    if (isNaN(progressNumber) || progressNumber < 0 || progressNumber >= steps.length) { // progress 0-indexed
+      setSnackbar({ open: true, message: `Progres harus angka antara 0 dan ${steps.length - 1}`, severity: "error" });
+      return;
     }
 
+    const itemToUpdate = {
+      name: editFormData.name,
+      status: editFormData.status,
+      progress: progressNumber,
+      dueDate: editFormData.dueDate,
+      inventory_id: editFormData.inventory_id, // Sudah dihandle di handleEditFormChange
+    };
+
     try {
-      // Kirim data ke backend
-      const response = await axios.put(`${API_URL}/${editFormData.id}`, {
-        name: editFormData.name,
-        status: editFormData.status,
-        progress: progressNumber, // Kirim progress sebagai angka
-        dueDate: editFormData.dueDate,
-         // Jika ada foreign key inventory_id yang perlu dikirim, tambahkan di sini
-      });
-
+      const response = await axios.put(`${API_URL}/${editFormData.id}`, itemToUpdate);
       console.log("Item updated successfully:", response.data);
-
       setSnackbar({ open: true, message: "Alat berhasil diperbarui", severity: "success" });
-      handleCloseEditDialog(); // Tutup dialog edit
-      fetchCalibrations(); // Ambil ulang data dari backend
-
+      handleCloseEditDialog();
+      fetchCalibrations(); // Ambil ulang data
     } catch (err) {
       console.error("Error updating tool:", err);
-       const errorMessage = err.response?.data?.error || err.message || "Gagal memperbarui alat";
+      const errorMessage = err.response?.data?.error || err.message || "Gagal memperbarui alat";
       setSnackbar({ open: true, message: errorMessage, severity: "error" });
     }
   };
 
-
-  // Handler untuk membuka dialog Konfirmasi Hapus
+  // Membuka dialog Konfirmasi Hapus
   const handleDeleteClick = (item) => {
-    setItemToDeleteId(item.id); // Menggunakan ID database
+    setItemToDeleteId(item.id);
     setItemToDeleteName(item.name);
     setOpenConfirmDialog(true);
   };
 
-  // Handler untuk menutup dialog Konfirmasi Hapus
+  // Menutup dialog Konfirmasi Hapus
   const handleCloseConfirmDialog = () => {
     setOpenConfirmDialog(false);
     setItemToDeleteId(null);
     setItemToDeleteName('');
   };
 
-  // Handler untuk mengkonfirmasi dan menghapus alat (Menggunakan Axios DELETE)
+  // Mengkonfirmasi dan menghapus alat dari backend
   const handleConfirmDelete = async () => {
-     if (itemToDeleteId === null) return;
+    if (itemToDeleteId === null) return;
 
     try {
-      // Kirim permintaan delete ke backend
       await axios.delete(`${API_URL}/${itemToDeleteId}`);
-
       console.log("Item deleted successfully:", itemToDeleteId);
-
       setSnackbar({ open: true, message: `Alat '${itemToDeleteName}' berhasil dihapus!`, severity: "info" });
-      handleCloseConfirmDialog(); // Tutup dialog konfirmasi
-      fetchCalibrations(); // Ambil ulang data dari backend
-
+      handleCloseConfirmDialog();
+      fetchCalibrations(); // Ambil ulang data
     } catch (err) {
       console.error("Error deleting tool:", err);
-       const errorMessage = err.response?.data?.error || err.message || "Gagal menghapus alat";
+      const errorMessage = err.response?.data?.error || err.message || "Gagal menghapus alat";
       setSnackbar({ open: true, message: errorMessage, severity: "error" });
-       handleCloseConfirmDialog(); // Tutup dialog konfirmasi meskipun error
+      handleCloseConfirmDialog(); // Tutup dialog konfirmasi meskipun error
     }
   };
 
@@ -263,21 +266,30 @@ export default function Kalibrasi() {
     return 'default';
   };
 
-   // Tampilkan pesan loading
-    if (loading && backendCalibrationData.length === 0) {
-        return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Typography>Memuat data kalibrasi...</Typography></Box>;
-    }
+  // Tampilkan pesan loading atau error awal saat data utama belum dimuat
+  if (loading && displayedCalibrationData.length === 0) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column' }}>
+        <CircularProgress size={50} sx={{ mb: 2 }} />
+        <Typography variant="h6">Memuat data kalibrasi...</Typography>
+      </Box>
+    );
+  }
 
-    // Tampilkan pesan error jika data backend kosong dan ada error
-     if (error && backendCalibrationData.length === 0) {
-        return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'error.main' }}>
-                <Typography>Gagal memuat data. {error.message}</Typography>
-               </Box>;
-    }
-
+  if (error && displayedCalibrationData.length === 0) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', color: 'error.main' }}>
+        <WarningIcon sx={{ fontSize: 60, mb: 2 }} />
+        <Typography variant="h6">Gagal memuat data kalibrasi.</Typography>
+        <Typography variant="body1">{error.message || "Terjadi kesalahan tidak diketahui."}</Typography>
+        <Button variant="outlined" sx={{ mt: 2 }} onClick={fetchCalibrations}>Coba Lagi</Button>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <ScienceIcon fontSize="large" sx={{ color: '#9C27B0', mr: 2 }} />
         <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#333' }}>
@@ -286,6 +298,7 @@ export default function Kalibrasi() {
       </Box>
 
       <Grid container spacing={3}>
+        {/* Bagian Proses Kalibrasi & Daftar Alat */}
         <Grid item xs={12} md={8}>
           <Card sx={{ borderRadius: 2, mb: 3 }}>
             <CardContent>
@@ -293,7 +306,7 @@ export default function Kalibrasi() {
                 Proses Kalibrasi
               </Typography>
               <Stepper activeStep={activeStep} alternativeLabel>
-                {steps.map((label, index) => ( // Menggunakan index sebagai key
+                {steps.map((label, index) => (
                   <Step key={index}>
                     <StepLabel>{label}</StepLabel>
                   </Step>
@@ -308,88 +321,84 @@ export default function Kalibrasi() {
                 Daftar Alat yang Dikalibrasi
               </Typography>
               {/* Tampilkan pesan loading atau error jika data backend kosong tapi masih ada data statis */}
-               {loading && backendCalibrationData.length === 0 && initialStaticCalibrationData.length > 0 && (
-                 <Box sx={{ textAlign: 'center', mb: 2 }}><Typography variant="body2" color="text.secondary">Memuat data terbaru...</Typography></Box>
-               )}
-               {error && backendCalibrationData.length === 0 && initialStaticCalibrationData.length > 0 && (
-                 <Box sx={{ textAlign: 'center', mb: 2, color: 'error.main' }}><Typography variant="body2">Gagal memuat data terbaru.</Typography></Box>
-               )}
-
-              <Grid container spacing={2}>
-                {/* Menggunakan data yang ditampilkan */}
-                {displayedCalibrationData.map((item) => (
-                  <Grid item xs={12} key={item.id}> {/* Menggunakan item.id dari data */}
-                    <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}> {/* Added flexWrap */}
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mr: 2 }}> {/* Added mr */}
-                          {item.name}
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}> {/* Box for chips and buttons */}
+              {loading && displayedCalibrationData.length === 0 ? (
+                <Box sx={{ textAlign: 'center', mb: 2 }}><CircularProgress size={24} /><Typography variant="body2" color="text.secondary">Memuat data...</Typography></Box>
+              ) : error && displayedCalibrationData.length === 0 ? (
+                <Box sx={{ textAlign: 'center', mb: 2, color: 'error.main' }}><Typography variant="body2">Gagal memuat data.</Typography></Box>
+              ) : displayedCalibrationData.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                  <Typography variant="h6">Tidak ada data kalibrasi.</Typography>
+                  <Typography variant="body2">Klik "Tambah Alat Baru" untuk menambahkan.</Typography>
+                </Box>
+              ) : (
+                <Grid container spacing={2}>
+                  {displayedCalibrationData.map((item) => (
+                    <Grid item xs={12} key={item.id}>
+                      <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mr: 2 }}>
+                            {item.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Chip
                               label={item.status}
                               icon={
                                 item.status === "Selesai" ? <CheckCircle /> :
-                                  item.status === "Dalam Proses" ? <Schedule /> : <Error />
+                                item.status === "Dalam Proses" ? <Schedule /> : <Error />
                               }
-                               color={getStatusColor(item.status)} // Menggunakan helper function
+                              color={getStatusColor(item.status)}
                               variant="outlined"
-                              size="small" // Smaller chip
+                              size="small"
                             />
-                             {/* Tombol Edit */}
                             <Tooltip title="Edit Alat">
-                                <IconButton size="small" color="primary" onClick={() => handleOpenEditDialog(item)}>
-                                    <Edit fontSize="small"/>
-                                </IconButton>
+                              <IconButton size="small" color="primary" onClick={() => handleOpenEditDialog(item)}>
+                                <Edit fontSize="small"/>
+                              </IconButton>
                             </Tooltip>
-                            {/* Tombol Hapus */}
-                             <Tooltip title="Hapus Alat">
-                                <IconButton size="small" color="error" onClick={() => handleDeleteClick(item)}>
-                                    <Delete fontSize="small"/>
-                                </IconButton>
+                            <Tooltip title="Hapus Alat">
+                              <IconButton size="small" color="error" onClick={() => handleDeleteClick(item)}>
+                                <Delete fontSize="small"/>
+                              </IconButton>
                             </Tooltip>
+                          </Box>
                         </Box>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        Target Selesai: {item.dueDate}
-                      </Typography>
-                      <LinearProgress
-                        variant="determinate"
-                        // Menggunakan item.progress (dari backend) untuk perhitungan
-                        value={(item.progress / steps.length) * 100}
-                        sx={{
-                          height: 8,
-                          mt: 2,
-                          borderRadius: 4,
-                          '& .MuiLinearProgress-bar': {
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          Target Selesai: {item.dueDate ? format(new Date(item.dueDate), 'dd MMM yyyy') : 'N/A'}
+                        </Typography>
+                        {item.inventory && ( // Tampilkan nama inventory jika ada
+                            <Typography variant="body2" color="text.secondary">
+                                Inventory: {item.inventory.name} ({item.inventory.itemCode})
+                            </Typography>
+                        )}
+                        <LinearProgress
+                          variant="determinate"
+                          value={(item.progress / steps.length) * 100}
+                          sx={{
+                            height: 8,
+                            mt: 2,
                             borderRadius: 4,
-                            backgroundColor: '#9C27B0'
-                          }
-                        }}
-                      />
-                    </Card>
-                  </Grid>
-                ))}
-                 {/* Jika tidak ada data sama sekali (baik backend maupun statis) */}
-                {displayedCalibrationData.length === 0 && !loading && !error && (
-                    <Grid item xs={12}>
-                         <Box sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
-                            <Typography variant="h6">Tidak ada data kalibrasi.</Typography>
-                            <Typography variant="body2">Klik "Tambah Alat Baru" untuk menambahkan.</Typography>
-                         </Box>
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 4,
+                              backgroundColor: '#9C27B0'
+                            }
+                          }}
+                        />
+                      </Card>
                     </Grid>
-                )}
-              </Grid>
+                  ))}
+                </Grid>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
+        {/* Bagian Statistik & Tombol Tambah */}
         <Grid item xs={12} md={4}>
           <Card sx={{ borderRadius: 2, mb: 3 }}>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
                 Statistik Kalibrasi
               </Typography>
-               {/* Statistik dihitung berdasarkan displayedCalibrationData */}
               <Grid container spacing={2}>
                 <Grid item xs={6}>
                   <Card sx={{ p: 2, textAlign: 'center', backgroundColor: 'rgba(156, 39, 176, 0.1)' }}>
@@ -402,7 +411,7 @@ export default function Kalibrasi() {
                 <Grid item xs={6}>
                   <Card sx={{ p: 2, textAlign: 'center', backgroundColor: 'rgba(76, 175, 80, 0.1)' }}>
                     <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#4CAF50' }}>
-                       {displayedCalibrationData.filter(item => item.status === 'Selesai').length}
+                      {displayedCalibrationData.filter(item => item.status === 'Selesai').length}
                     </Typography>
                     <Typography variant="body2">Selesai</Typography>
                   </Card>
@@ -418,7 +427,7 @@ export default function Kalibrasi() {
                 <Grid item xs={6}>
                   <Card sx={{ p: 2, textAlign: 'center', backgroundColor: 'rgba(244, 67, 54, 0.1)' }}>
                     <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#F44336' }}>
-                       {displayedCalibrationData.filter(item => item.status === 'Belum Dimulai').length}
+                      {displayedCalibrationData.filter(item => item.status === 'Belum Dimulai').length}
                     </Typography>
                     <Typography variant="body2">Belum Dimulai</Typography>
                   </Card>
@@ -427,7 +436,6 @@ export default function Kalibrasi() {
             </CardContent>
           </Card>
 
-          {/* Tombol Tambah Alat Baru */}
           <Button
             variant="contained"
             fullWidth
@@ -438,7 +446,7 @@ export default function Kalibrasi() {
               py: 1.5,
               borderRadius: 2
             }}
-            onClick={handleOpenAddDialog} // Memanggil handler untuk membuka dialog tambah
+            onClick={handleOpenAddDialog}
           >
             Tambah Alat Baru
           </Button>
@@ -448,43 +456,57 @@ export default function Kalibrasi() {
       {/* Dialog Tambah Alat */}
       <Dialog open={openAddDialog} onClose={handleCloseAddDialog} fullWidth maxWidth="sm">
         <DialogTitle>Tambah Alat Kalibrasi</DialogTitle>
-        <DialogContent dividers> {/* Added dividers */}
+        <DialogContent dividers>
           <TextField
             autoFocus
             margin="dense"
-            name="name" // Ditambahkan nama untuk input
+            name="name"
             label="Nama Alat"
             type="text"
             fullWidth
             variant="outlined"
             value={newTool.name}
-            onChange={handleNewToolChange} // Memanggil handler change
+            onChange={handleNewToolChange}
+            required
           />
           <TextField
             margin="dense"
-            name="dueDate" // Ditambahkan nama untuk input
+            name="dueDate"
             label="Tanggal Target Selesai"
             type="date"
             fullWidth
-            variant="outlined" // Changed to outlined
+            variant="outlined"
             InputLabelProps={{ shrink: true }}
             value={newTool.dueDate}
-            onChange={handleNewToolChange} // Memanggil handler change
+            onChange={handleNewToolChange}
+            required
           />
-           {/* Tambahkan field lain jika perlu di form tambah */}
-           {/* Contoh: TextField untuk foreign key inventory_id jika frontend mengelolanya */}
-           {/*
-           <TextField
-                margin="dense"
-                name="inventoryId"
-                label="ID Inventory Terkait (Opsional)"
-                type="number"
-                fullWidth
-                variant="outlined"
-                value={newTool.inventoryId || ''}
-                onChange={handleNewToolChange}
-            />
-            */}
+          <FormControl fullWidth margin="dense" variant="outlined" disabled={loadingInventoryOptions}>
+            <InputLabel>Pilih Inventory (Opsional)</InputLabel>
+            <Select
+              name="inventory_id"
+              value={newTool.inventory_id}
+              label="Pilih Inventory (Opsional)"
+              onChange={handleNewToolChange}
+              error={!!errorInventoryOptions}
+            >
+              <MenuItem value=""><em>Tidak ada</em></MenuItem>
+              {loadingInventoryOptions ? (
+                <MenuItem disabled>
+                  <CircularProgress size={20} sx={{ mr: 1 }} /> Memuat inventory...
+                </MenuItem>
+              ) : inventoryOptions.length === 0 ? (
+                <MenuItem disabled>Tidak ada inventory tersedia.</MenuItem>
+              ) : (
+                inventoryOptions.map((inv) => (
+                  <MenuItem key={inv.id} value={inv.id}>
+                    {inv.name} ({inv.itemCode})
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+            {errorInventoryOptions && <Typography color="error" variant="caption">{`Error: ${errorInventoryOptions.message}`}</Typography>}
+          </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseAddDialog}>Batal</Button>
@@ -494,111 +516,119 @@ export default function Kalibrasi() {
         </DialogActions>
       </Dialog>
 
+      {/* Dialog Edit Alat */}
+      <Dialog open={openEditDialog} onClose={handleCloseEditDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Edit Alat Kalibrasi</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            margin="dense"
+            name="name"
+            label="Nama Alat"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={editFormData.name}
+            onChange={handleEditFormChange}
+            required
+          />
+          <FormControl fullWidth margin="dense" variant="outlined">
+            <InputLabel>Status</InputLabel>
+            <Select
+              name="status"
+              value={editFormData.status}
+              label="Status"
+              onChange={handleEditFormChange}
+            >
+              <MenuItem value="Belum Dimulai">Belum Dimulai</MenuItem>
+              <MenuItem value="Dalam Proses">Dalam Proses</MenuItem>
+              <MenuItem value="Selesai">Selesai</MenuItem>
+            </Select>
+          </FormControl>
 
-       {/* Dialog Edit Alat */}
-       <Dialog open={openEditDialog} onClose={handleCloseEditDialog} fullWidth maxWidth="sm">
-            <DialogTitle>Edit Alat Kalibrasi</DialogTitle>
-            <DialogContent dividers> {/* Added dividers */}
-                <TextField
-                    margin="dense"
-                    name="name"
-                    label="Nama Alat"
-                    type="text"
-                    fullWidth
-                    variant="outlined"
-                    value={editFormData.name}
-                    onChange={handleEditFormChange} // Memanggil handler change
-                />
-                 {/* Form Control untuk Status */}
-                 <FormControl fullWidth margin="dense" variant="outlined">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      name="status"
-                      value={editFormData.status}
-                      label="Status"
-                      onChange={handleEditFormChange} // Memanggil handler change
-                    >
-                        <MenuItem value="Belum Dimulai">Belum Dimulai</MenuItem>
-                        <MenuItem value="Dalam Proses">Dalam Proses</MenuItem>
-                        <MenuItem value="Selesai">Selesai</MenuItem>
-                    </Select>
-                </FormControl>
+          <TextField
+            margin="dense"
+            name="progress"
+            label={`Langkah Progres (0-${steps.length - 1})`}
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={editFormData.progress}
+            onChange={handleEditFormChange}
+            inputProps={{ min: 0, max: steps.length - 1 }}
+            required
+          />
 
-                 {/* TextField untuk Progres */}
-                <TextField
-                    margin="dense"
-                    name="progress"
-                    label={`Langkah Progres (0-${steps.length})`} // Menampilkan jumlah langkah
-                    type="number"
-                    fullWidth
-                    variant="outlined"
-                    value={editFormData.progress}
-                    onChange={handleEditFormChange} // Memanggil handler change
-                     inputProps={{ min: 0, max: steps.length }} // Batasan input
-                />
+          <TextField
+            margin="dense"
+            name="dueDate"
+            label="Tanggal Target Selesai"
+            type="date"
+            fullWidth
+            variant="outlined"
+            InputLabelProps={{ shrink: true }}
+            value={editFormData.dueDate}
+            onChange={handleEditFormChange}
+            required
+          />
+          <FormControl fullWidth margin="dense" variant="outlined" disabled={loadingInventoryOptions}>
+            <InputLabel>Pilih Inventory (Opsional)</InputLabel>
+            <Select
+              name="inventory_id"
+              value={editFormData.inventory_id || ''}
+              label="Pilih Inventory (Opsional)"
+              onChange={handleEditFormChange}
+              error={!!errorInventoryOptions}
+            >
+              <MenuItem value=""><em>Tidak ada</em></MenuItem>
+              {loadingInventoryOptions ? (
+                <MenuItem disabled>Memuat inventory...</MenuItem>
+              ) : inventoryOptions.length === 0 ? (
+                <MenuItem disabled>Tidak ada inventory tersedia.</MenuItem>
+              ) : (
+                inventoryOptions.map((inv) => (
+                  <MenuItem key={inv.id} value={inv.id}>
+                    {inv.name} ({inv.itemCode})
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+            {errorInventoryOptions && <Typography color="error" variant="caption">{`Error: ${errorInventoryOptions.message}`}</Typography>}
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditDialog}>Batal</Button>
+          <Button variant="contained" onClick={handleSaveEdit} sx={{ bgcolor: '#9C27B0' }}>
+            Simpan Perubahan
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-                <TextField
-                    margin="dense"
-                    name="dueDate"
-                    label="Tanggal Target Selesai"
-                    type="date"
-                    fullWidth
-                    variant="outlined"
-                    InputLabelProps={{ shrink: true }}
-                    value={editFormData.dueDate}
-                    onChange={handleEditFormChange} // Memanggil handler change
-                />
-                 {/* Tambahkan field lain jika perlu di form edit */}
-                  {/* Contoh: TextField untuk foreign key inventory_id jika frontend mengelolanya */}
-                 {/*
-                 <TextField
-                      margin="dense"
-                      name="inventoryId"
-                      label="ID Inventory Terkait (Opsional)"
-                      type="number"
-                      fullWidth
-                      variant="outlined"
-                      value={editFormData.inventoryId || ''}
-                      onChange={handleEditFormChange}
-                  />
-                 */}
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={handleCloseEditDialog}>Batal</Button>
-                <Button variant="contained" onClick={handleSaveEdit} sx={{ bgcolor: '#9C27B0' }}>
-                    Simpan Perubahan
-                </Button>
-            </DialogActions>
-        </Dialog>
-
-
-        {/* Confirmation Dialog for Deletion */}
-        <Dialog
-            open={openConfirmDialog}
-            onClose={handleCloseConfirmDialog}
-            aria-labelledby="alert-dialog-title"
-            aria-describedby="alert-dialog-description"
-        >
-            <DialogTitle id="alert-dialog-title">
-                <Box display="flex" alignItems="center">
-                    <WarningIcon color="warning" sx={{ mr: 1 }} /> Konfirmasi Hapus Alat
-                </Box>
-            </DialogTitle>
-            <DialogContent>
-                <DialogContentText id="alert-dialog-description">
-                    Anda yakin ingin menghapus alat "<strong>{itemToDeleteName}</strong>" ini dari daftar kalibrasi? Tindakan ini tidak dapat dibatalkan.
-                </DialogContentText>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={handleCloseConfirmDialog} color="primary">
-                    Batal
-                </Button>
-                <Button onClick={handleConfirmDelete} color="error" autoFocus>
-                    Hapus
-                </Button>
-            </DialogActions>
-        </Dialog>
-
+      {/* Confirmation Dialog for Deletion */}
+      <Dialog
+        open={openConfirmDialog}
+        onClose={handleCloseConfirmDialog}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          <Box display="flex" alignItems="center">
+            <WarningIcon color="warning" sx={{ mr: 1 }} /> Konfirmasi Hapus Alat
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            Anda yakin ingin menghapus alat "<strong>{itemToDeleteName}</strong>" ini dari daftar kalibrasi? Tindakan ini tidak dapat dibatalkan.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConfirmDialog} color="primary">
+            Batal
+          </Button>
+          <Button onClick={handleConfirmDelete} color="error" autoFocus>
+            Hapus
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar Notification */}
       <Snackbar
@@ -618,4 +648,3 @@ export default function Kalibrasi() {
     </Box>
   );
 }
- 

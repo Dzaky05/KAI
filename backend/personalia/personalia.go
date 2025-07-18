@@ -6,18 +6,24 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time" // Import time package
+	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
+
+	// Import untuk Excel
+	"github.com/xuri/excelize/v2"
+	// Import untuk PDF
+	"github.com/jung-kurt/gofpdf"
 )
 
+// DateOnly struct dan metode-metodenya sudah benar,
+// tetapi perhatikan bahwa di struct Personalia, Anda menggunakan `string` untuk JoinDate,
+// bukan tipe `DateOnly` ini. Ini tidak masalah selama konsisten.
 type DateOnly struct {
 	time.Time
 }
 
-// Custom type untuk tanggal saja (YYYY-MM-DD) tanpa waktu
 func (d DateOnly) Value() (driver.Value, error) {
 	if d.Time.IsZero() {
 		return nil, nil
@@ -61,9 +67,7 @@ func (d DateOnly) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + d.Time.Format("2006-01-02") + `"`), nil
 }
 
-// Struct model sesuai dengan skema database dan kebutuhan frontend
-
-// Profile mewakili struktur data profile (partial, hanya field yang relevan untuk relasi dan nama jika ada)
+// Struct Profile
 type Profile struct {
 	ProfileID    int    `json:"profile_id" gorm:"column:profile_id;primaryKey"`
 	Email        string `json:"email" gorm:"column:email"`
@@ -73,248 +77,202 @@ type Profile struct {
 	ExperienceID int    `json:"experience_id" gorm:"column:experience_id"`
 }
 
-// Personalia mewakili struktur data untuk item personalia
+// Struct Personalia (Perubahan di sini: Lokasi dihapus)
 type Personalia struct {
-	PersonaliaID int      `gorm:"primaryKey;column:personalia_id"`
-	NIP          string   `json:"nip" gorm:"column:nip"` // Menggunakan string untuk NIP
-	Jabatan      string   `json:"jabatan" gorm:"column:jabatan"`
-	Divisi       string   `json:"divisi" gorm:"column:divisi"`
-	Lokasi       string   `json:"lokasi" gorm:"column:lokasi"`
-	Status       string   `json:"status" gorm:"column:status"`
-	JoinDate     DateOnly `gorm:"column:join_date"`
-	PhoneNumber  string   `json:"phoneNumber" gorm:"column:phone_number"`
-	UrgentNumber string   `json:"urgentNumber" gorm:"column:urgent_number"` // Mapping urgentNumber frontend ke urgent_number
-
-	ProfileID int `json:"profile_id" gorm:"column:profile_id"` // Foreign key ke tabel Profile
-
-	// Relasi Many-to-One: Personalia dimiliki oleh satu Profile
-	// GORM akan menggunakan ProfileID di struct Personalia sebagai foreign key secara default
-	Profile Profile `json:"profile,omitempty"` // Embed Profile, omitempty agar tidak ditampilkan jika kosong
-
-	// Jika Anda ingin mendapatkan nama pegawai dari Profile, tambahkan di sini
-	// Nama string `json:"name" gorm:"-"` // Contoh field transient (tidak disimpan di DB Personalia)
-
-	// Relasi Many-to-Many (jika personalia adalah bagian dari tim produksi/rekayasa)
-	// ProduksiTeam []ProduksiTeam `gorm:"foreignKey:PersonaliaID"` // Jika ingin melihat tim produksi mana personalia ini tergabung
-	// RekayasaTeam []RekayasaTeam `gorm:"foreignKey:PersonaliaID"` // Jika ingin melihat tim rekayasa mana personalia ini tergabung
+	PersonaliaID int     `gorm:"primaryKey;autoIncrement;column:personalia_id" json:"personalia_id"`
+	NIP          string  `json:"nip" gorm:"column:nip;type:varchar(50)"`
+	Jabatan      string  `json:"jabatan" gorm:"column:jabatan;type:varchar(50)"`
+	Divisi       string  `json:"divisi" gorm:"column:divisi;type:varchar(100)"`
+	Status       string  `json:"status" gorm:"column:status;type:varchar(100)"`
+	JoinDate     string  `json:"joinDate" gorm:"column:join_date;type:date"`
+	PhoneNumber  string  `json:"phoneNumber" gorm:"column:phone_number;type:varchar(50)"`
+	UrgentNumber string  `json:"urgentNumber" gorm:"column:urgent_number;type:varchar(50)"`
+	ProfileID    *int    `json:"profile_id" gorm:"column:profile_id"`
+	Profile      Profile `json:"profile,omitempty" gorm:"foreignKey:ProfileID"`
 }
 
-var db *gorm.DB // Menggunakan GORM DB instance
+func (Profile) TableName() string {
+	return "profile"
+}
+func (Personalia) TableName() string {
+	return "personalia"
+}
 
-// initDatabase melakukan koneksi awal ke database menggunakan GORM
+var db *gorm.DB
+
 func Init(database *gorm.DB) {
 	db = database
+	log.Println("Personalia module initialized. Auto-migration and constraint creation skipped as DB schema is fixed.")
 }
 
-// getAllPersonalia mengambil semua item personalia dari database beserta profile terkait
 func getAllPersonalia(c *gin.Context) {
 	var personaliaItems []Personalia
-	// Menggunakan Preload("Profile") untuk memuat data profile terkait
 	if result := db.Preload("Profile").Find(&personaliaItems); result.Error != nil {
-		log.Printf("Error saat mengambil data personalia: %v", result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data personalia", "details": result.Error.Error()})
+		log.Printf("Error fetching personalia: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch personalia data"})
 		return
 	}
-
-	// *** Catatan: Jika nama pegawai ada di Profile, Anda bisa mengaksesnya via item.Profile.Name
-	// Jika nama tidak ada di Profile, Anda perlu memutuskan sumber nama pegawai.
-
 	c.JSON(http.StatusOK, personaliaItems)
 }
 
-// getPersonaliaByID mengambil item personalia berdasarkan ID beserta profile terkait
 func getPersonaliaByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID personalia tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid personalia ID"})
 		return
 	}
 
 	var item Personalia
-	// Menggunakan Preload("Profile") untuk memuat data profile terkait
 	if result := db.Preload("Profile").First(&item, id); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Data personalia tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Personalia not found"})
 		} else {
-			log.Printf("Error saat mengambil personalia dengan ID %d: %v", id, result.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data personalia", "details": result.Error.Error()})
+			log.Printf("Error fetching personalia with ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch personalia"})
 		}
 		return
 	}
 
-	// *** Catatan: Jika nama pegawai ada di Profile, Anda bisa mengaksesnya via item.Profile.Name
-
 	c.JSON(http.StatusOK, item)
 }
 
-// createPersonalia menambahkan item personalia baru ke database
 func createPersonalia(c *gin.Context) {
 	var newItem Personalia
 	if err := c.ShouldBindJSON(&newItem); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		log.Printf("Error binding JSON for createPersonalia: %v", err) // Log lebih detail
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data format", "details": err.Error()})
 		return
 	}
 
-	// Validasi sederhana
-	if newItem.NIP == "" || newItem.Jabatan == "" || newItem.Divisi == "" || newItem.Lokasi == "" || newItem.Status == "" || newItem.JoinDate.IsZero() || newItem.PhoneNumber == "" || newItem.UrgentNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field wajib diisi"})
+	// Validasi field yang wajib
+	if newItem.NIP == "" || newItem.Jabatan == "" || newItem.Divisi == "" ||
+		newItem.Status == "" || newItem.JoinDate == "" ||
+		newItem.PhoneNumber == "" || newItem.UrgentNumber == "" {
+		log.Println("Validation failed in createPersonalia: required fields are empty")             // Log lebih detail
+		c.JSON(http.StatusBadRequest, gin.H{"error": "All fields are required (except ProfileID)"}) // Pesan error disesuaikan
 		return
 	}
 
-	// Jika personalia_id di database auto-increment, atur ke 0
-	newItem.PersonaliaID = 0
-
-	// *** Penanganan Relasi Profile saat Create:
-	// Jika Anda ingin membuat record Profile baru bersama dengan Personalia:
-	// var newProfile Profile
-	// // Isi field newProfile dari data yang diterima dari frontend (misalnya, jika frontend mengirim email, dll.)
-	// // newProfile.Email = ...
-	// // newProfile.Address = ...
-	//
-	// // Kaitkan Profile baru dengan Personalia baru
-	// newItem.Profile = newProfile
-	//
-	// Jika Anda ingin menautkan ke record Profile yang sudah ada (misalnya, frontend mengirim ProfileID):
-	// if newItem.ProfileID != 0 {
-	//     // Pastikan Profile dengan ID ini ada di database
-	//     var existingProfile Profile
-	//     if result := db.First(&existingProfile, newItem.ProfileID); result.Error != nil {
-	//         c.JSON(http.StatusBadRequest, gin.H{"error": "Profile dengan ID yang diberikan tidak ditemukan", "details": result.Error.Error()})
-	//         return
-	//     }
-	//     // GORM akan otomatis menautkan berdasarkan ProfileID
-	// } else {
-	//      // Jika ProfileID 0 atau tidak diberikan, mungkin perlu penanganan khusus
-	//      // Misalnya, buat Profile default atau minta frontend selalu memberikan ProfileID
-	// }
-
-	// Untuk kesederhanaan, contoh ini hanya menyimpan data Personalia utama.
-	// Implementasi penautan/pembuatan Profile saat create/update memerlukan logika tambahan
-	// sesuai dengan alur kerja frontend dan struktur data yang dikirim.
-
-	// Menggunakan GORM untuk membuat data personalia (dan relasi jika Profile lengkap disertakan)
+	log.Printf("Attempting to create personalia in DB: %+v", newItem) // Log item sebelum disimpan
 	if result := db.Create(&newItem); result.Error != nil {
-		log.Printf("Error saat menambahkan personalia: %v", result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menambahkan item personalia", "details": result.Error.Error()})
+		log.Printf("Error creating personalia in DB: %v", result.Error) // Log error dari GORM
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create personalia in database"})
 		return
 	}
+	log.Printf("Successfully created personalia with ID: %d", newItem.PersonaliaID) // Log sukses
 
-	// Muat ulang item dengan profile yang sudah disimpan untuk respons
+	// Reload the item with profile data, penting untuk mendapatkan ID yang di-generate GORM
 	var createdItem Personalia
+	// Pastikan newItem.PersonaliaID sudah terisi setelah db.Create
+	if newItem.PersonaliaID == 0 {
+		log.Println("Warning: newItem.PersonaliaID is 0 after db.Create. Reload might fail.")
+	}
 	db.Preload("Profile").First(&createdItem, newItem.PersonaliaID)
+	log.Printf("Reloaded created item for response: %+v", createdItem) // Log item yang akan dikirim
 
-	c.JSON(http.StatusCreated, createdItem) // Kirim kembali item yang baru ditambahkan (termasuk ID dan profile)
+	c.JSON(http.StatusCreated, createdItem) // Mengembalikan status 201 Created
 }
 
-// updatePersonalia memperbarui item personalia di database
 func updatePersonalia(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID personalia tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid personalia ID"})
 		return
 	}
 
 	var updatedItem Personalia
 	if err := c.ShouldBindJSON(&updatedItem); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		log.Printf("Error binding JSON for updatePersonalia: %v", err) // Log lebih detail
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data format", "details": err.Error()})
 		return
 	}
 
-	// Validasi sederhana
-	if updatedItem.NIP == "" || updatedItem.Jabatan == "" || updatedItem.Divisi == "" || updatedItem.Lokasi == "" || updatedItem.Status == "" || updatedItem.JoinDate.IsZero() || updatedItem.PhoneNumber == "" || updatedItem.UrgentNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field wajib diisi"})
+	// Validasi field yang wajib
+	if updatedItem.NIP == "" || updatedItem.Jabatan == "" || updatedItem.Divisi == "" ||
+		updatedItem.Status == "" || updatedItem.JoinDate == "" ||
+		updatedItem.PhoneNumber == "" || updatedItem.UrgentNumber == "" {
+		log.Println("Validation failed in updatePersonalia: required fields are empty") // Log lebih detail
+		c.JSON(http.StatusBadRequest, gin.H{"error": "All fields are required"})
 		return
 	}
 
-	// Cari item yang ada berdasarkan ID (primary key), preload profile
 	var item Personalia
-	if result := db.Preload("Profile").First(&item, id); result.Error != nil {
+	if result := db.First(&item, id); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Item personalia tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Personalia not found"})
 		} else {
-			log.Printf("Error saat mencari personalia dengan ID %d untuk diperbarui: %v", id, result.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item personalia", "details": result.Error.Error()})
+			log.Printf("Error finding personalia with ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find personalia"})
 		}
 		return
 	}
 
-	// Update field dasar item yang ada
+	// Update fields
 	item.NIP = updatedItem.NIP
 	item.Jabatan = updatedItem.Jabatan
 	item.Divisi = updatedItem.Divisi
-	item.Lokasi = updatedItem.Lokasi
 	item.Status = updatedItem.Status
 	item.JoinDate = updatedItem.JoinDate
 	item.PhoneNumber = updatedItem.PhoneNumber
 	item.UrgentNumber = updatedItem.UrgentNumber
+	item.ProfileID = updatedItem.ProfileID // Sekarang bisa menerima nil/pointer
 
-	// *** Penanganan Relasi Profile saat Update:
-	// Jika frontend mengirim data Profile lengkap atau ProfileID baru:
-	// - Jika ProfileID berubah: update item.ProfileID = updatedItem.ProfileID dan pastikan Profile baru ada.
-	// - Jika data Profile lengkap disertakan dan ID cocok dengan Profile terkait: update field Profile terkait.
-	// - Jika data Profile lengkap disertakan dan ID tidak cocok / ProfileID tidak ada: buat Profile baru dan tautkan, atau error.
-	// Implementasi ini memerlukan logika tambahan sesuai dengan bagaimana frontend mengelola Profile.
-
-	// Menggunakan GORM untuk menyimpan perubahan pada Personalia utama
+	log.Printf("Attempting to update personalia ID %d in DB: %+v", id, item) // Log item sebelum disimpan
 	if result := db.Save(&item); result.Error != nil {
-		log.Printf("Error saat memperbarui personalia dengan ID %d: %v", id, result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui item personalia", "details": result.Error.Error()})
+		log.Printf("Error updating personalia with ID %d: %v", id, result.Error) // Log error dari GORM
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update personalia"})
 		return
 	}
+	log.Printf("Successfully updated personalia ID: %d", item.PersonaliaID) // Log sukses
 
-	// Muat ulang item dengan profile untuk respons (jika update profile dilakukan)
+	// Reload the item with profile data
 	var savedItem Personalia
 	db.Preload("Profile").First(&savedItem, item.PersonaliaID)
+	log.Printf("Reloaded updated item for response: %+v", savedItem) // Log item yang akan dikirim
 
-	c.JSON(http.StatusOK, savedItem) // Kirim kembali item yang diperbarui
+	c.JSON(http.StatusOK, savedItem)
 }
 
-// deletePersonalia menghapus item personalia dari database
 func deletePersonalia(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID personalia tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid personalia ID"})
 		return
 	}
 
-	// Cari item yang akan dihapus
 	var item Personalia
 	if result := db.First(&item, id); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Item personalia tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Personalia not found"})
 		} else {
-			log.Printf("Error saat mencari personalia dengan ID %d untuk dihapus: %v", id, result.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item personalia", "details": result.Error.Error()})
+			log.Printf("Error finding personalia with ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find personalia"})
 		}
 		return
 	}
 
-	// *** Penanganan Relasi Profile saat Delete:
-	// Menghapus Personalia tidak otomatis menghapus Profile terkait.
-	// Jika Profile hanya terkait dengan satu Personalia dan Anda ingin menghapusnya juga,
-	// Anda perlu menghapus Profile terkait secara manual sebelum menghapus Personalia,
-	// atau mengatur OnDelete:Cascade pada foreign key ProfileID di tabel Personalia.
-
-	// Menggunakan GORM untuk menghapus data Personalia
 	if result := db.Delete(&item); result.Error != nil {
-		log.Printf("Error saat menghapus personalia dengan ID %d: %v", id, result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus item personalia", "details": result.Error.Error()})
+		log.Printf("Error deleting personalia with ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete personalia"})
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil) // 204 No Content
+	c.JSON(http.StatusNoContent, nil)
 }
 
-// Handler: Assign profile_id ke personalia
-// Handler: Assign profile_id ke personalia
 func AssignProfileToPersonalia(c *gin.Context) {
-	id := c.Param("id")
+	idStr := c.Param("id") // Ambil ID dari URL
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid personalia ID"})
+		return
+	}
 
 	var input struct {
-		ProfileID *int `json:"profile_id"`
+		ProfileID *int `json:"profile_id"` // Menggunakan pointer untuk nullability
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -324,45 +282,193 @@ func AssignProfileToPersonalia(c *gin.Context) {
 
 	var personalia Personalia
 	if err := db.First(&personalia, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Data personalia tidak ditemukan"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Personalia not found"})
 		return
 	}
 
-	personalia.ProfileID = 0
-	if input.ProfileID != nil {
-		personalia.ProfileID = *input.ProfileID
-	}
+	personalia.ProfileID = input.ProfileID // Langsung assign pointer
 
+	// Validasi jika ProfileID tidak nil, pastikan profile-nya ada
 	if input.ProfileID != nil {
 		var profile Profile
 		if err := db.First(&profile, *input.ProfileID).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Profile dengan ID tersebut tidak ditemukan"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Profile not found"})
 			return
 		}
 	}
 
 	if err := db.Save(&personalia).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengupdate profile_id"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile_id"})
 		return
 	}
+
+	// Reload personalia untuk memastikan relasi Profile terisi jika baru di-assign
+	db.Preload("Profile").First(&personalia, id)
 
 	c.JSON(http.StatusOK, personalia)
 }
 
-func RegisterRoutes(r *gin.RouterGroup) {
-
-	// Konfigurasi CORS hanya sekali saja di main.go
-	// jadi di sini TIDAK PERLU pakai r.Use(cors.New(config))
-
-	api := r // ✅ karena prefix sudah diberikan dari main.go
-
-	{
-		api.GET("/", getAllPersonalia)
-		api.GET("/:id", getPersonaliaByID)
-		api.POST("/", createPersonalia)
-		api.PUT("/:id", updatePersonalia)
-		api.DELETE("/:id", deletePersonalia)
-		api.PUT("/:id/assign-profile", AssignProfileToPersonalia)
-
+// exportPersonaliaToExcel menggenerasi dan mengirimkan file Excel data personalia
+func exportPersonaliaToExcel(c *gin.Context) {
+	var personaliaItems []Personalia
+	if result := db.Preload("Profile").Find(&personaliaItems); result.Error != nil {
+		log.Printf("Error fetching personalia for Excel export: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch personalia data for export"})
+		return
 	}
+
+	f := excelize.NewFile()
+	sheetName := "Personalia Data"
+	index, err := f.NewSheet(sheetName)
+	if err != nil {
+		log.Printf("Error creating new Excel sheet: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create Excel file"})
+		return
+	}
+
+	// Set header kolom
+	headers := []string{"ID", "NIP", "Jabatan", "Divisi", "Status", "Tanggal Bergabung", "No. Telepon", "No. Darurat", "Email Profil", "Alamat Profil"}
+	for i, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1) // Baris pertama
+		f.SetCellValue(sheetName, cell, header)
+	}
+
+	// Isi data personalia
+	for i, item := range personaliaItems {
+		rowNum := i + 2 // Mulai dari baris kedua setelah header
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", rowNum), item.PersonaliaID)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", rowNum), item.NIP)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowNum), item.Jabatan)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", rowNum), item.Divisi)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", rowNum), item.Status)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowNum), item.JoinDate)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowNum), item.PhoneNumber)
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", rowNum), item.UrgentNumber)
+
+		// Cek apakah ada profil terkait
+		profileEmail := ""
+		profileAddress := ""
+		if item.ProfileID != nil && item.Profile.Email != "" { // Pastikan ProfileID tidak nil dan Profile terisi
+			profileEmail = item.Profile.Email
+			profileAddress = item.Profile.Address
+		}
+		f.SetCellValue(sheetName, fmt.Sprintf("I%d", rowNum), profileEmail)
+		f.SetCellValue(sheetName, fmt.Sprintf("J%d", rowNum), profileAddress)
+	}
+
+	f.SetActiveSheet(index)
+
+	// Set header HTTP untuk download file
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=personalia_data_%s.xlsx", time.Now().Format("20060102")))
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Cache-Control", "no-cache")
+
+	if err := f.Write(c.Writer); err != nil {
+		log.Printf("Error writing Excel file to response: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write Excel file to response"})
+		return
+	}
+}
+
+// exportPersonaliaToPDF menggenerasi dan mengirimkan file PDF data personalia
+func exportPersonaliaToPDF(c *gin.Context) {
+	var personaliaItems []Personalia
+	if result := db.Preload("Profile").Find(&personaliaItems); result.Error != nil {
+		log.Printf("Error fetching personalia for PDF export: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch personalia data for export"})
+		return
+	}
+
+	pdf := gofpdf.New("P", "mm", "A4", "") // Portrait, milimeter, A4
+	pdf.AddPage()
+	pdf.SetFont("Arial", "B", 16)
+	pdf.Cell(40, 10, "Data Personalia PT Kereta Api Indonesia")
+	pdf.Ln(12) // Line break
+
+	pdf.SetFont("Arial", "B", 10)
+	// Header Tabel
+	header := []string{"ID", "NIP", "Jabatan", "Divisi", "Status", "Join Date", "Phone", "Urgent Phone", "Email", "Address"}
+	colWidths := []float64{10, 25, 25, 25, 15, 25, 25, 25, 30, 40} // Sesuaikan lebar kolom
+
+	// Print header
+	for i, h := range header {
+		pdf.Cell(colWidths[i], 7, h)
+	}
+	pdf.Ln(-1) // New line
+
+	pdf.SetFont("Arial", "", 8) // Font untuk data
+	// Data Tabel
+	for _, item := range personaliaItems {
+		profileEmail := ""
+		profileAddress := ""
+		if item.ProfileID != nil && item.Profile.Email != "" {
+			profileEmail = item.Profile.Email
+			profileAddress = item.Profile.Address
+		}
+
+		row := []string{
+			strconv.Itoa(item.PersonaliaID),
+			item.NIP,
+			item.Jabatan,
+			item.Divisi,
+			item.Status,
+			item.JoinDate,
+			item.PhoneNumber,
+			item.UrgentNumber,
+			profileEmail,
+			profileAddress,
+		}
+
+		// Jika baris terlalu panjang, wrap teks atau sesuaikan lebar kolom.
+		// Untuk contoh ini, kita asumsikan teks cukup pendek atau lebar kolom sudah sesuai.
+		for i, data := range row {
+			// Jika teks terlalu panjang untuk kolom, potong teks
+			if pdf.GetStringWidth(data) > colWidths[i] {
+				// Memotong teks jika terlalu panjang
+				for len(data) > 0 && pdf.GetStringWidth(data) > colWidths[i] {
+					data = data[:len(data)-1]
+				}
+				// Tambahkan elipsis jika teks dipotong
+				if len(data) > 3 { // pastikan ada cukup ruang untuk elipsis
+					data = data[:len(data)-3] + "..."
+				}
+			}
+			pdf.Cell(colWidths[i], 7, data)
+		}
+		pdf.Ln(-1) // New line for next row
+	}
+
+	// Set header HTTP untuk download file
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=personalia_data_%s.pdf", time.Now().Format("20060102")))
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Cache-Control", "no-cache")
+
+	if err := pdf.Output(c.Writer); err != nil {
+		log.Printf("Error writing PDF file to response: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write PDF file to response"})
+		return
+	}
+}
+
+// RegisterRoutes
+func RegisterRoutes(r *gin.RouterGroup) {
+	// Mendaftarkan route untuk GET dan POST agar bisa menerima baik dengan atau tanpa trailing slash
+	r.GET("", getAllPersonalia)  // Menangani /api/personalia
+	r.GET("/", getAllPersonalia) // Menangani /api/personalia/
+
+	r.GET("/:id", getPersonaliaByID)
+
+	r.POST("", createPersonalia)  // Menangani /api/personalia
+	r.POST("/", createPersonalia) // Menangani /api/personalia/
+
+	r.PUT("/:id", updatePersonalia)
+	r.DELETE("/:id", deletePersonalia)
+	r.PUT("/:id/assign-profile", AssignProfileToPersonalia)
+
+	// NEW: Endpoint untuk export Excel
+	r.GET("/export/excel", exportPersonaliaToExcel)
+	// NEW: Endpoint untuk export PDF
+	r.GET("/export/pdf", exportPersonaliaToPDF)
 }

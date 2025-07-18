@@ -46,6 +46,16 @@ type Profile struct {
 	Experience *Experience `gorm:"foreignKey:ExperienceID;references:ExperienceID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 }
 
+func (Profile) TableName() string {
+	return "profile"
+}
+func (Education) TableName() string {
+	return "education"
+}
+func (Experience) TableName() string {
+	return "experience"
+}
+
 var db *gorm.DB // Menggunakan GORM DB instance
 
 // initDatabase melakukan koneksi awal ke database menggunakan GORM

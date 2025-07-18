@@ -7,17 +7,14 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Stepper, Step, StepLabel,
   Snackbar, Alert, TextField, Grid, Tooltip,
   Paper,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  CircularProgress, Select, MenuItem, InputLabel, FormControl // Tambahkan Select, MenuItem, InputLabel, FormControl
 } from '@mui/material';
 import {
-  Add, CheckCircle, Warning, Error, Visibility, Delete,
+  Add, CheckCircle, Warning, Error, Visibility, Delete, Edit, // Tambahkan ikon Edit
   KeyboardArrowLeft, KeyboardArrowRight, Inventory2, Group, Build
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-
-// HAPUS ATAU ABAIKAN DATA STATIS INI
-// const initialProductionData = [...]
-
 
 const steps = [
   "Informasi Umum",
@@ -28,7 +25,6 @@ const steps = [
 
 export default function Produksi() {
   // --- Deklarasi State Hooks ---
-  // INISIALISASI DENGAN ARRAY KOSONG
   const [productionData, setProductionData] = useState([]);
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
@@ -37,10 +33,10 @@ export default function Produksi() {
     target: "",
     startDate: format(new Date(), 'yyyy-MM-dd'),
     endDate: "",
-    personnel: [], // Perlu disesuaikan jika backend butuh format lain (misal: array ID)
-    materials: [], // Perlu disesuaikan agar sesuai dengan backend (saat ini tidak sesuai FK tunggal)
-    progress: [], // Perlu disesuaikan agar sesuai dengan backend
-    currentPersonnel: "",
+    personnel: [], // Array untuk menyimpan NIP personel yang dipilih
+    materials: [],
+    progress: [], // Progress data, jika ada
+    currentPersonnel: "", // Akan menyimpan NIP dari personel yang dipilih
     currentMaterialName: "",
     currentMaterialQty: "",
     currentMaterialHarga: "",
@@ -49,68 +45,71 @@ export default function Produksi() {
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedProduction, setSelectedProduction] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
-  const [personnelOptions, setPersonnelOptions] = useState([]); // State baru untuk menyimpan daftar personel dari backend
+
+  // State baru untuk menyimpan daftar personel dari backend
+  const [personnelOptions, setPersonnelOptions] = useState([]);
+  const [loadingPersonnelOptions, setLoadingPersonnelOptions] = useState(true); // Loading state untuk personel
+  const [errorPersonnelOptions, setErrorPersonnelOptions] = useState(null); // Error state untuk personel
   
-  // TAMBAHKAN STATE LOADING DAN ERROR
+  // State loading dan error untuk data produksi utama
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  
-  // --- END Deklarasi State Hooks ---
+  // State untuk dialog edit produksi
+  const [openEditProductionDialog, setOpenEditProductionDialog] = useState(false);
+  const [editProductionData, setEditProductionData] = useState(null); // Data produksi yang sedang diedit
 
+  // NEW: State untuk dialog konfirmasi hapus
+  const [openConfirmDeleteDialog, setOpenConfirmDeleteDialog] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null); // Item yang akan dihapus
 
-  // --- Effect untuk Memuat Data dari Backend (RUN SAAT COMPONENT MOUNT) ---
+  // URL dasar API dari .env
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
+
+  // --- Effect untuk Memuat Data Produksi dari Backend ---
   useEffect(() => {
     const fetchProductionData = async () => {
-      setLoading(true); // Set loading menjadi true saat memulai fetch
-      setError(null);   // Reset error state
+      setLoading(true);
+      setError(null);
       try {
-        // PANGGIL ENDPOINT GET PRODUKSI
-        const response = await axios.get('http://localhost:8080/api/produksi'); // Sesuaikan URL jika perlu
-        // ISI STATE DENGAN DATA DARI BACKEND
+        const response = await axios.get(`${API_BASE_URL}/api/produksi`); // Menggunakan API_BASE_URL
         setProductionData(response.data);
       } catch (error) {
         console.error("Error fetching production data:", error);
-        setError(error); // Simpan error di state
+        setError(error);
         setSnackbar({ open: true, message: "Gagal memuat data produksi. Silakan coba refresh.", severity: "error" });
       } finally {
-        setLoading(false); // Set loading menjadi false setelah fetch selesai (sukses atau error)
+        setLoading(false);
       }
     };
 
-    fetchProductionData(); // Panggil fungsi fetch saat komponen mount
+    fetchProductionData();
+  }, [API_BASE_URL]); // Tambahkan API_BASE_URL sebagai dependensi
 
-  }, []); // Dependency array kosong ([]) berarti effect ini hanya berjalan sekali
-
-  // ... END Effect untuk Memuat Data dari Backend (Produksi) ...
-
-      // Effect untuk memuat data personel dari backend saat komponen dimuat
-      useEffect(() => {
-        const fetchPersonnelOptions = async () => {
-          try {
-            // SESUAIKAN URL ENDPOINT PERSONALIA JIKA PERLU
-            const response = await axios.get('http://localhost:8080/api/personalia');
-            // Asumsikan respons backend adalah array objek personel, masing-masing dengan field 'id' (Primary Key) dan 'name' (atau 'nama')
-            // Pastikan struktur data dari backend `/api/personalia` memiliki field ID yang unik.
-            setPersonnelOptions(response.data);
-          } catch (error) {
-            console.error("Error fetching personnel options:", error);
-            // Tangani error, mungkin tampilkan pesan di snackbar
-            setSnackbar({ open: true, message: "Gagal memuat opsi personel.", severity: "error" });
-          }
-        };
-        fetchPersonnelOptions();
-      }, []); // Jalankan sekali saat komponen mount
-
-
-      // --- Deklarasi Fungsi-fungsi Handler ---
-      // ...
-
-  // --- END Effect untuk Memuat Data dari Backend ---
-
+  // --- Effect untuk Memuat Data Personel dari Backend ---
+  useEffect(() => {
+    const fetchPersonnelOptions = async () => {
+      setLoadingPersonnelOptions(true); // Set loading menjadi true saat memulai fetch
+      setErrorPersonnelOptions(null); // Reset error state
+      try {
+        const response = await axios.get(`${API_BASE_URL}/api/personalia`); // Menggunakan API_BASE_URL
+        if (Array.isArray(response.data)) {
+          setPersonnelOptions(response.data);
+        } else {
+          throw new Error("Format data personalia tidak sesuai.");
+        }
+      } catch (error) {
+        console.error("Error fetching personnel options:", error);
+        setErrorPersonnelOptions(error); // Simpan error di state
+        setSnackbar({ open: true, message: `Gagal memuat opsi personel: ${error.message || "Terjadi kesalahan."}`, severity: "error" });
+      } finally {
+        setLoadingPersonnelOptions(false); // Set loading menjadi false setelah fetch selesai
+      }
+    };
+    fetchPersonnelOptions();
+  }, [API_BASE_URL]); // Tambahkan API_BASE_URL sebagai dependensi
 
   // --- Deklarasi Fungsi-fungsi Handler ---
-  // Hitung berdasarkan productionData dari state
   const totalProductions = productionData.length;
   const inProgressProductions = productionData.filter(p => p.status === "Dalam Proses").length;
   const completedProductions = productionData.filter(p => p.status === "Selesai").length;
@@ -120,15 +119,19 @@ export default function Produksi() {
     setNewProduction(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddItem = (field, valueField) => {
-    if (newProduction[valueField].trim()) {
-      setNewProduction(prev => ({
-        ...prev,
-        [field]: [...prev[field], prev[valueField].trim()],
-        [valueField]: ""
-      }));
+  const handleAddItem = () => {
+    if (newProduction.currentPersonnel.trim()) {
+      if (!newProduction.personnel.includes(newProduction.currentPersonnel)) {
+        setNewProduction(prev => ({
+          ...prev,
+          personnel: [...prev.personnel, newProduction.currentPersonnel.trim()],
+          currentPersonnel: "" // Reset pilihan setelah ditambahkan
+        }));
+      } else {
+        setSnackbar({ open: true, message: "Personel ini sudah ditambahkan!", severity: "warning" });
+      }
     } else {
-      setSnackbar({ open: true, message: "Input tidak boleh kosong!", severity: "error" });
+      setSnackbar({ open: true, message: "Pilih personel terlebih dahulu!", severity: "error" });
     }
   };
 
@@ -143,7 +146,7 @@ export default function Produksi() {
       };
       setNewProduction(prev => ({
         ...prev,
-        materials: [...prev.materials, newMaterial], // Kirim array material ini ke backend
+        materials: [...prev.materials, newMaterial],
         currentMaterialName: "",
         currentMaterialQty: "",
         currentMaterialHarga: "",
@@ -170,9 +173,9 @@ export default function Produksi() {
         }
         const targetNum = parseInt(newProduction.target);
         if (isNaN(targetNum) || targetNum <= 0) {
-             setSnackbar({ open: true, message: "Target produksi harus berupa angka dan lebih dari 0.", severity: "error" });
-             return;
-         }
+          setSnackbar({ open: true, message: "Target produksi harus berupa angka dan lebih dari 0.", severity: "error" });
+          return;
+        }
         if (newProduction.startDate > newProduction.endDate) {
           setSnackbar({ open: true, message: "Tanggal mulai tidak boleh setelah tanggal selesai.", severity: "error" });
           return;
@@ -191,7 +194,7 @@ export default function Produksi() {
         }
         break;
       case 3: // Konfirmasi - Tidak perlu validasi tambahan di sini jika step sebelumnya sudah divalidasi
-         break;
+        break;
       default:
         break;
     }
@@ -199,45 +202,26 @@ export default function Produksi() {
   };
   const handleBack = () => setActiveStep((prevActiveStep) => prevActiveStep - 1);
 
-
-  // FUNGSI UNTUK MENYIMPAN KE BACKEND (SETELAH KLIK 'Selesai & Simpan')
   const handleSaveProduction = async () => {
-    // Data yang akan dikirim ke backend.
-    // Backend akan menggenerate ID database (qc_id) dan ID frontend (FrontendID)
     const itemToSave = {
-      // id: newId, // TIDAK PERLU MEMBUAT ID DI FRONTEND
       name: newProduction.name,
       target: parseInt(newProduction.target),
-      // completed dan status awal biasanya diset di backend
       completed: 0, // Set awal 0
       status: "Dalam Proses", // Set status awal
       startDate: newProduction.startDate,
       endDate: newProduction.endDate,
-      // Perhatikan kesesuaian struktur data personel, material, progress dengan yang diharapkan backend
-      personnel: newProduction.personnel, // Mengirim array string (sesuai frontend saat ini)
-      materials: newProduction.materials, // Mengirim array objek material (sesuai frontend saat ini)
-      progress: newProduction.progress, // Mengirim array objek progress (sesuai frontend saat ini)
-      // Jika backend Anda perlu ID frontend saat create, tambahkan di sini.
-      // Berdasarkan kode QualityControl.go, FrontendID diparsing dari data input.
-      // Jadi, mungkin Anda perlu menambahkan field `FrontendID` di sini jika skema database produksi Anda membutuhkannya,
-      // meskipun di QualityControl.go logikanya ada di createQualityControl.
-      // Jika Produksi tidak butuh FrontendID saat create, biarkan seperti ini.
+      personnel: newProduction.personnel, // Mengirim array NIP string
+      materials: newProduction.materials, // Mengirim array objek material
+      progress: newProduction.progress, // Mengirim array objek progress (jika ada)
     };
 
     try {
-      // Kirim data ke backend menggunakan axios.post
-      // URL: /api/produksi
-      const response = await axios.post('http://localhost:8080/api/produksi', itemToSave); // Sesuaikan URL jika perlu
-
-      // AMBIL DATA RESPON DARI BACKEND (ITEM PRODUKSI BARU DENGAN ID)
+      const response = await axios.post(`${API_BASE_URL}/api/produksi`, itemToSave); // Menggunakan API_BASE_URL
       const createdItem = response.data;
-
-      // UPDATE STATE DENGAN DATA DARI BACKEND
       setProductionData(prev => [...prev, createdItem]);
 
-      // Reset form dan tutup dialog
       setOpenAddDialog(false);
-      setActiveStep(0); // Kembali ke step pertama
+      setActiveStep(0);
       setNewProduction({
         name: "", target: "", startDate: format(new Date(), 'yyyy-MM-dd'),
         endDate: "", personnel: [], materials: [], progress: [],
@@ -245,29 +229,92 @@ export default function Produksi() {
         currentMaterialName: "", currentMaterialQty: "", currentMaterialHarga: "", currentMaterialSatuan: ""
       });
 
-      // Tampilkan notifikasi sukses
       setSnackbar({ open: true, message: "Produksi berhasil ditambahkan!", severity: "success" });
 
     } catch (error) {
-      // Tangani error saat menyimpan ke backend
       console.error("Gagal menambahkan produksi:", error);
-      // Coba ambil pesan error dari respons backend jika ada
       const errorMessage = error.response?.data?.error || "Gagal menyimpan ke server.";
       setSnackbar({ open: true, message: errorMessage, severity: "error" });
     }
   };
 
-
   const getStatusInfo = (status) => {
     if (status === "Selesai") return { color: "success", icon: <CheckCircle fontSize="small" /> };
     if (status === "Dalam Proses") return { color: "warning", icon: <Warning fontSize="small" /> };
-    // Asumsi status lain adalah error atau default
-    return { color: "error", icon: <Error fontSize="small" /> }; // Contoh untuk status selain Selesai/Dalam Proses
+    return { color: "error", icon: <Error fontSize="small" /> };
   };
 
   const handleOpenDetail = (item) => {
     setSelectedProduction(item);
     setOpenDetailDialog(true);
+  };
+
+  // --- Fungsi untuk membuka dialog edit ---
+  const handleOpenEditDialog = (item) => {
+    setEditProductionData({ ...item }); // Salin data item ke state edit
+    setOpenEditProductionDialog(true);
+  };
+
+  // --- Fungsi untuk menangani perubahan input di form edit ---
+  const handleEditProductionChange = (e) => {
+    const { name, value } = e.target; 
+    
+    // Perbaikan: Konversi nilai ke number hanya untuk field 'target' dan 'completed'
+    let newValue = value;
+    if (name === 'target' || name === 'completed') {
+      newValue = parseInt(value, 10);
+      if (isNaN(newValue)) { // Tangani jika input kosong atau bukan angka
+        newValue = 0; // Atau biarkan null/undefined jika Anda ingin input kosong
+      }
+    }
+    
+    setEditProductionData(prev => ({ ...prev, [name]: newValue }));
+  };
+
+  // --- Fungsi untuk menyimpan perubahan setelah edit ---
+  const handleSaveEditProduction = async () => {
+    if (!editProductionData) return;
+
+    try {
+      // Kirim PUT request ke backend
+      const response = await axios.put(`${API_BASE_URL}/api/produksi/${editProductionData.id}`, editProductionData);
+
+      // Perbarui state productionData dengan data yang sudah diupdate
+      setProductionData(prevData =>
+        prevData.map(item => (item.id === response.data.id ? response.data : item))
+      );
+
+      setOpenEditProductionDialog(false); // Tutup dialog edit
+      setSnackbar({ open: true, message: "Produksi berhasil diperbarui!", severity: "success" });
+    } catch (error) {
+      console.error("Gagal memperbarui produksi:", error);
+      const errorMessage = error.response?.data?.error || "Gagal memperbarui ke server.";
+      setSnackbar({ open: true, message: errorMessage, severity: "error" });
+    }
+  };
+
+  // NEW: Fungsi untuk membuka dialog konfirmasi hapus
+  const handleOpenConfirmDeleteDialog = (item) => {
+    setItemToDelete(item);
+    setOpenConfirmDeleteDialog(true);
+  };
+
+  // NEW: Fungsi untuk menghapus produksi setelah konfirmasi
+  const handleDeleteProduction = async () => {
+    if (!itemToDelete) return;
+
+    try {
+      await axios.delete(`${API_BASE_URL}/api/produksi/${itemToDelete.id}`);
+      setProductionData(prevData => prevData.filter(item => item.id !== itemToDelete.id));
+      setSnackbar({ open: true, message: "Produksi berhasil dihapus!", severity: "success" });
+    } catch (error) {
+      console.error("Gagal menghapus produksi:", error);
+      const errorMessage = error.response?.data?.error || "Gagal menghapus dari server.";
+      setSnackbar({ open: true, message: errorMessage, severity: "error" });
+    } finally {
+      setOpenConfirmDeleteDialog(false); // Tutup dialog konfirmasi
+      setItemToDelete(null); // Reset item yang akan dihapus
+    }
   };
 
   const calculateProgressPercentage = (completed, target) => {
@@ -303,8 +350,8 @@ export default function Produksi() {
                 onChange={handleInputChange}
                 required
                 inputProps={{ min: 1 }}
-                 helperText={isNaN(parseInt(newProduction.target)) || parseInt(newProduction.target) <= 0 ? "Target harus angka > 0" : ""}
-                 error={isNaN(parseInt(newProduction.target)) || parseInt(newProduction.target) <= 0}
+                helperText={isNaN(parseInt(newProduction.target)) || parseInt(newProduction.target) <= 0 ? "Target harus angka > 0" : ""}
+                error={isNaN(parseInt(newProduction.target)) || parseInt(newProduction.target) <= 0}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -317,8 +364,8 @@ export default function Produksi() {
                 onChange={handleInputChange}
                 InputLabelProps={{ shrink: true }}
                 required
-                 helperText={!newProduction.startDate ? "Tanggal mulai wajib diisi" : ""}
-                 error={!newProduction.startDate}
+                helperText={!newProduction.startDate ? "Tanggal mulai wajib diisi" : ""}
+                error={!newProduction.startDate}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -331,8 +378,8 @@ export default function Produksi() {
                 onChange={handleInputChange}
                 InputLabelProps={{ shrink: true }}
                 required
-                 helperText={!newProduction.endDate ? "Tanggal selesai wajib diisi" : "" || (newProduction.startDate > newProduction.endDate ? "Tanggal selesai harus setelah mulai" : "")}
-                 error={!newProduction.endDate || (newProduction.startDate && newProduction.endDate && newProduction.startDate > newProduction.endDate)}
+                helperText={!newProduction.endDate ? "Tanggal selesai wajib diisi" : "" || (newProduction.startDate > newProduction.endDate ? "Tanggal selesai harus setelah mulai" : "")}
+                error={!newProduction.endDate || (newProduction.startDate && newProduction.endDate && newProduction.startDate > newProduction.endDate)}
               />
             </Grid>
           </Grid>
@@ -342,64 +389,72 @@ export default function Produksi() {
           <Box>
             <Typography variant="h6" gutterBottom>Personel Terlibat</Typography>
 
-             {/* Dropdown atau input untuk menambah personel */}
-             <Grid container spacing={2} alignItems="center" mb={2}>
-             <Grid item xs={8}>
-            <TextField
-            fullWidth
-            select
-            label="Pilih Personel"
-            value={newProduction.currentPersonnel}
-            onChange={(e) => setNewProduction({ ...newProduction, currentPersonnel: e.target.value })}
-            SelectProps={{ native: true }}
-          >
-            <option value="">-- Pilih Personel --</option>
-            {personnelOptions.map((person) => (
-              <option key={person.id} value={person.name}>
-                {person.name}
-              </option>
-            ))}
-          </TextField>
-        </Grid>
-        <Grid item xs={4}>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => handleAddItem("personnel", "currentPersonnel")}
-            disabled={!newProduction.currentPersonnel}
-          >
-            Tambah
-          </Button>
-        </Grid>
-      </Grid>
+            <Grid container spacing={2} alignItems="center" mb={2}>
+              <Grid item xs={8}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Pilih Personel"
+                  value={newProduction.currentPersonnel}
+                  onChange={(e) => setNewProduction({ ...newProduction, currentPersonnel: e.target.value })}
+                  SelectProps={{ native: true }}
+                  disabled={loadingPersonnelOptions} // Disable saat loading
+                  error={!!errorPersonnelOptions} // Tampilkan error jika ada
+                  helperText={errorPersonnelOptions ? `Error: ${errorPersonnelOptions.message}` : ''}
+                >
+                  <option value="">-- Pilih Personel --</option>
+                  {loadingPersonnelOptions ? (
+                    <option disabled>Memuat personel...</option>
+                  ) : personnelOptions.length === 0 ? (
+                    <option disabled>Tidak ada personel tersedia.</option>
+                  ) : (
+                    personnelOptions.map((person) => (
+                      // Menggunakan personalia_id sebagai key dan nip sebagai value
+                      // Menampilkan NIP dan Jabatan untuk identifikasi yang lebih baik
+                      <option key={person.personalia_id} value={person.nip}>
+                        {person.nip} - {person.jabatan}
+                      </option>
+                    ))
+                  )}
+                </TextField>
+              </Grid>
+              <Grid item xs={4}>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={handleAddItem} // Panggil handleAddItem tanpa parameter field/valueField
+                  disabled={!newProduction.currentPersonnel || loadingPersonnelOptions}
+                >
+                  Tambah
+                </Button>
+              </Grid>
+            </Grid>
 
-      <List dense>
-        {newProduction.personnel.length === 0 ? (
-          <Typography color="text.secondary">Belum ada personel ditambahkan.</Typography>
-        ) : (
-          newProduction.personnel.map((p, i) => (
-            <ListItem
-              key={i}
-              secondaryAction={
-                <IconButton edge="end" onClick={() => handleRemoveItem("personnel", i)}>
-                  <Delete />
-                </IconButton>
-              }
-            >
-              <ListItemText primary={p} />
-            </ListItem>
-          ))
-        )}
-      </List>
-    </Box>
-  );
+            <List dense>
+              {newProduction.personnel.length === 0 ? (
+                <Typography color="text.secondary">Belum ada personel ditambahkan.</Typography>
+              ) : (
+                newProduction.personnel.map((p, i) => (
+                  <ListItem
+                    key={i} // Menggunakan index sebagai key karena p adalah string NIP
+                    secondaryAction={
+                      <IconButton edge="end" onClick={() => handleRemoveItem("personnel", i)}>
+                        <Delete />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemText primary={p} /> {/* Menampilkan NIP */}
+                  </ListItem>
+                ))
+              )}
+            </List>
+          </Box>
+        );
 
       case 2: // Material
         return (
           <Box>
             <Typography variant="h6" gutterBottom>Material Digunakan</Typography>
-             {/* Perlu dipertimbangkan: Apakah ini input detail material baru atau pilihan dari daftar material yang sudah ada di inventory? */}
-             {/* Jika pilihan dari inventory, perlu fetch data inventory dari backend dan gunakan Select/Autocomplete */}
             <Grid container spacing={2} alignItems="center" mb={2}>
               <Grid item xs={12} sm={4}>
                 <TextField
@@ -461,9 +516,9 @@ export default function Produksi() {
                 ))
               )}
             </List>
-             {newProduction.materials.length === 0 && activeStep === 2 && (
-                 <Typography color="error" variant="caption">Setidaknya satu material wajib ditambahkan</Typography>
-             )}
+            {newProduction.materials.length === 0 && activeStep === 2 && (
+              <Typography color="error" variant="caption">Setidaknya satu material wajib ditambahkan</Typography>
+            )}
           </Box>
         );
       case 3: // Konfirmasi
@@ -563,111 +618,124 @@ export default function Produksi() {
         {/* KONDISI RENDER BERDASARKAN LOADING DAN ERROR */}
         {loading && (
           <Box sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress size={24} sx={{ mb: 1 }} />
             <Typography color="text.secondary">Memuat data produksi...</Typography>
           </Box>
         )}
 
         {error && !loading && (
-           <Box sx={{ p: 3, textAlign: 'center', color: 'error.main' }}>
-             <Typography>Gagal memuat data produksi.</Typography>
-             <Typography variant="body2">{error.message || "Terjadi kesalahan tidak diketahui."}</Typography>
-           </Box>
+          <Box sx={{ p: 3, textAlign: 'center', color: 'error.main' }}>
+            <Typography>Gagal memuat data produksi.</Typography>
+            <Typography variant="body2">{error.message || "Terjadi kesalahan tidak diketahui."}</Typography>
+          </Box>
         )}
 
         {!loading && !error && productionData.length === 0 ? (
-           <Box sx={{ p: 3, textAlign: 'center', py: 3 }}>
-             <Typography variant="h6" color="text.secondary">Belum ada data produksi.</Typography>
-             <Typography variant="body2" color="text.secondary">Klik "Buat Produksi Baru" untuk memulai.</Typography>
-           </Box>
+          <Box sx={{ p: 3, textAlign: 'center', py: 3 }}>
+            <Typography variant="h6" color="text.secondary">Belum ada data produksi.</Typography>
+            <Typography variant="body2" color="text.secondary">Klik "Buat Produksi Baru" untuk memulai.</Typography>
+          </Box>
         ) : (
-           // Tampilkan tabel jika tidak loading dan data tidak kosong (atau jika ada error tapi data tidak kosong)
-            (!loading && productionData.length > 0) ? (
-             <Table sx={{ minWidth: 650 }} aria-label="production table">
-               <TableHead>
-                 <TableRow>
-                    <TableCell>ID</TableCell> {/* ID dari backend */}
-                    <TableCell>Nama Produksi</TableCell>
-                    <TableCell align="right">Target (Unit)</TableCell>
-                    <TableCell align="right">Selesai (Unit)</TableCell>
-                    <TableCell>Progress</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Periode</TableCell>
-                    <TableCell>Personel</TableCell>
-                    <TableCell align="center">Aksi</TableCell>
-                  </TableRow>
-               </TableHead>
-               <TableBody>
-                 {/* Mapping data dari state productionData */}
-                 {productionData.map((item) => {
-                   const progressPercentage = calculateProgressPercentage(item.completed, item.target);
-                   const statusInfo = getStatusInfo(item.status);
-                   const isCompleted = item.status === "Selesai";
+          (!loading && productionData.length > 0) ? (
+            <Table sx={{ minWidth: 650 }} aria-label="production table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>ID</TableCell> {/* ID dari backend */}
+                  <TableCell>Nama Produksi</TableCell>
+                  <TableCell align="right">Target (Unit)</TableCell>
+                  <TableCell align="right">Selesai (Unit)</TableCell>
+                  <TableCell>Progress</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Periode</TableCell>
+                  <TableCell>Personel</TableCell>
+                  <TableCell align="center">Aksi</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {/* Mapping data dari state productionData */}
+                {productionData.map((item) => {
+                  const progressPercentage = calculateProgressPercentage(item.completed, item.target);
+                  const statusInfo = getStatusInfo(item.status);
+                  const isCompleted = item.status === "Selesai";
 
-                   return (
-                     <TableRow
-                       key={item.id} // Gunakan ID unik dari backend sebagai key
-                       sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                     >
-                       <TableCell component="th" scope="row">
-                         {item.id} {/* Tampilkan ID dari backend */}
-                       </TableCell>
-                       <TableCell>{item.name}</TableCell>
-                       <TableCell align="right">{item.target}</TableCell>
-                       <TableCell align="right">{item.completed}</TableCell>
-                       <TableCell>
-                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                           <Box sx={{ width: '100%', mr: 1 }}>
-                             <LinearProgress
-                               variant="determinate"
-                               value={progressPercentage}
-                               sx={{
-                                 height: 8,
-                                 borderRadius: 5,
-                                 '& .MuiLinearProgress-bar': {
-                                   backgroundColor: isCompleted ? '#4caf50' : '#2196f3',
-                                 },
-                               }}
-                             />
-                           </Box>
-                           <Box sx={{ minWidth: 35 }}>
-                             <Typography variant="body2" color="text.secondary">{progressPercentage}%</Typography>
-                           </Box>
-                         </Box>
-                       </TableCell>
-                       <TableCell>
-                         <Chip
-                           label={item.status}
-                           color={statusInfo.color}
-                           icon={statusInfo.icon}
-                           size="small"
-                         />
-                       </TableCell>
-                       <TableCell>
-                         {/* Pastikan tanggal dari backend diformat dengan benar */}
-                         {item.startDate && item.endDate ?
-                            `${format(new Date(item.startDate), 'dd MMM yyyy')} - ${format(new Date(item.endDate), 'dd MMM yyyy')}`
-                           : 'N/A' // Tangani jika tanggal kosong
-                         }
-                       </TableCell>
-                       <TableCell>
-                          {/* Pastikan item.personnel adalah array dan tangani jika null/undefined */}
-                         {item.personnel && Array.isArray(item.personnel) && item.personnel.length > 0 ? item.personnel.join(', ') : 'N/A'}
-                       </TableCell>
-                       <TableCell align="center">
-                         <Tooltip title="Lihat Detail">
-                           <IconButton onClick={() => handleOpenDetail(item)} size="small">
-                             <Visibility />
-                           </IconButton>
-                         </Tooltip>
-                       </TableCell>
-                     </TableRow>
-                   );
-                 })}
-               </TableBody>
-             </Table>
-            ) : null
-         )}
-
+                  return (
+                    <TableRow
+                      key={item.id} // Gunakan ID unik dari backend sebagai key
+                      sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    >
+                      <TableCell component="th" scope="row">
+                        {item.id} {/* Tampilkan ID dari backend */}
+                      </TableCell>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell align="right">{item.target}</TableCell>
+                      <TableCell align="right">{item.completed}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box sx={{ width: '100%', mr: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={progressPercentage}
+                              sx={{
+                                height: 8,
+                                borderRadius: 5,
+                                '& .MuiLinearProgress-bar': {
+                                  backgroundColor: isCompleted ? '#4caf50' : '#2196f3',
+                                },
+                              }}
+                            />
+                          </Box>
+                          <Box sx={{ minWidth: 35 }}>
+                            <Typography variant="body2" color="text.secondary">{progressPercentage}%</Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={item.status}
+                          color={statusInfo.color}
+                          icon={statusInfo.icon}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {/* Pastikan tanggal dari backend diformat dengan benar */}
+                        {item.startDate && item.endDate ?
+                           `${format(new Date(item.startDate), 'dd MMM yyyy')} - ${format(new Date(item.endDate), 'dd MMM yyyy')}`
+                          : 'N/A' // Tangani jika tanggal kosong
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {/* Pastikan item.personnel adalah array dan tangani jika null/undefined */}
+                        {item.personnel && Array.isArray(item.personnel) && item.personnel.length > 0 ? item.personnel.join(', ') : 'N/A'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {/* Menggunakan Box dengan display="flex" untuk menempatkan ikon berdampingan */}
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                          <Tooltip title="Edit Produksi">
+                            <IconButton onClick={() => handleOpenEditDialog(item)} size="small" color="primary">
+                              <Edit />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Lihat Detail">
+                            <IconButton onClick={() => handleOpenDetail(item)} size="small" color="info">
+                              <Visibility />
+                            </IconButton>
+                          </Tooltip>
+                          {/* NEW: Tombol Hapus */}
+                          <Tooltip title="Hapus Produksi">
+                            <IconButton onClick={() => handleOpenConfirmDeleteDialog(item)} size="small" color="error">
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : null
+        )}
       </TableContainer>
 
       {/* Dialog Buat Produksi Baru */}
@@ -699,7 +767,6 @@ export default function Produksi() {
 
       {/* Dialog Detail Produksi */}
       <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} maxWidth="md" fullWidth>
-        {/* Pastikan menggunakan selectedProduction?.id untuk keamanan */}
         <DialogTitle>{selectedProduction?.name} <Chip label={selectedProduction?.id} size="small" sx={{ ml: 1 }} /></DialogTitle>
         <DialogContent dividers>
           {selectedProduction && (
@@ -710,7 +777,7 @@ export default function Produksi() {
                   <ListItem><ListItemText primary={`Target: ${selectedProduction.target} unit`}/></ListItem>
                   <ListItem><ListItemText primary={`Selesai: ${selectedProduction.completed} unit`}/></ListItem>
                   <ListItem><ListItemText primary={`Status: ${selectedProduction.status}`} /></ListItem>
-                   {/* Pastikan tanggal dari backend diformat dengan benar di detail */}
+                    {/* Pastikan tanggal dari backend diformat dengan benar di detail */}
                   <ListItem><ListItemText primary={`Periode: ${selectedProduction.startDate && selectedProduction.endDate ? format(new Date(selectedProduction.startDate), 'dd MMM yyyy') + ' - ' + format(new Date(selectedProduction.endDate), 'dd MMM yyyy') : 'N/A'}`} /></ListItem>
                 </List>
               </Grid>
@@ -719,7 +786,7 @@ export default function Produksi() {
                   <Group sx={{ verticalAlign: 'middle', mr: 1 }} />Personel Terlibat
                 </Typography>
                 <List dense>
-                   {/* Pastikan selectedProduction?.personnel adalah array */}
+                    {/* Pastikan selectedProduction?.personnel adalah array */}
                   {selectedProduction?.personnel && Array.isArray(selectedProduction.personnel) && selectedProduction.personnel.length > 0 ? (
                     selectedProduction.personnel.map((p, index) => (
                       <ListItem key={index}>
@@ -730,54 +797,156 @@ export default function Produksi() {
                     <ListItem><ListItemText primary="Tidak ada personel terlibat." /></ListItem>
                   )}
                 </List>
-                <Typography variant="h6" gutterBottom mt={2}>
-                  <Inventory2 sx={{ verticalAlign: 'middle', mr: 1 }} />Material Digunakan
-                </Typography>
-                <List dense>
-                   {/* Pastikan selectedProduction?.materials adalah array */}
-                  {selectedProduction?.materials && Array.isArray(selectedProduction.materials) && selectedProduction.materials.length > 0 ? (
-                    selectedProduction.materials.map((m, index) => (
-                      <ListItem key={index}>
-                        {/* Tampilkan detail material */}
-                        <ListItemText primary={`${m.name} (${m.qty} ${m.satuan}${m.harga ? ' @ Rp' + m.harga : ''})`} />
-                      </ListItem>
-                    ))
-                  ) : (
-                    <ListItem><ListItemText primary="Tidak ada material digunakan." /></ListItem>
-                  )}
-                </List>
-                <Typography variant="h6" gutterBottom mt={2}>Riwayat Progres</Typography>
-                <List dense>
-                    {/* Pastikan selectedProduction?.progress adalah array */}
-                  {selectedProduction?.progress && Array.isArray(selectedProduction.progress) && selectedProduction.progress.length > 0 ? (
-                    selectedProduction.progress.map((p, index) => (
-                      <ListItem key={index}>
-                        <ListItemText
-                           // Pastikan p.date ada dan valid
-                          primary={`${p.date ? format(new Date(p.date), 'dd MMM yyyy') : 'N/A'}: ${p.completed} unit selesai (${calculateProgressPercentage(p.completed, selectedProduction.target)}%)`}
-                          secondary={p.notes}
-                        />
-                      </ListItem>
-                    ))
-                  ) : (
-                    <ListItem><ListItemText primary="Belum ada riwayat progres." /></ListItem>
-                  )}
-                </List>
               </Grid>
             </Grid>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDetailDialog(false)}>Tutup</Button>
+          <Button onClick={() => setOpenDetailDialog(false)} color="primary">Tutup</Button>
+          <Button
+            variant="contained"
+            startIcon={<Edit />}
+            onClick={() => {
+              setOpenDetailDialog(false); // Tutup dialog detail
+              handleOpenEditDialog(selectedProduction); // Buka dialog edit dengan data yang sama
+            }}
+          >
+            Edit Produksi
+          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar Notification */}
+      {/* Dialog Edit Produksi */}
+      <Dialog open={openEditProductionDialog} onClose={() => setOpenEditProductionDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Produksi: {editProductionData?.name}</DialogTitle>
+        <DialogContent dividers>
+          {editProductionData && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  name="name"
+                  label="Nama Produksi"
+                  value={editProductionData.name || ''}
+                  onChange={handleEditProductionChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  name="target"
+                  label="Target (Unit)"
+                  type="number"
+                  value={editProductionData.target || ''}
+                  onChange={handleEditProductionChange}
+                  inputProps={{ min: 0 }}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  name="completed"
+                  label="Selesai (Unit)"
+                  // Hapus type="number" di sini
+                  value={editProductionData.completed || 0} // Default 0 jika null/undefined
+                  onChange={handleEditProductionChange}
+                  inputProps={{ min: 0, max: editProductionData.target || 999999, inputMode: 'numeric', pattern: '[0-9]*' }} // Tambahkan inputMode dan pattern
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  name="startDate"
+                  label="Tanggal Mulai"
+                  type="date"
+                  value={editProductionData.startDate || ''}
+                  onChange={handleEditProductionChange}
+                  InputLabelProps={{ shrink: true }}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  name="endDate"
+                  label="Tanggal Selesai (Estimasi)"
+                  type="date"
+                  value={editProductionData.endDate || ''}
+                  onChange={handleEditProductionChange}
+                  InputLabelProps={{ shrink: true }}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel id="status-select-label">Status</InputLabel>
+                  <Select
+                    labelId="status-select-label"
+                    name="status"
+                    value={editProductionData.status || ''}
+                    label="Status"
+                    onChange={handleEditProductionChange}
+                  >
+                    <MenuItem value="Dalam Proses">Dalam Proses</MenuItem>
+                    <MenuItem value="Selesai">Selesai</MenuItem>
+                    <MenuItem value="Tertunda">Tertunda</MenuItem>
+                    <MenuItem value="Dibatalkan">Dibatalkan</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              {/* Anda bisa menambahkan bagian untuk mengedit personel dan material di sini juga,
+                  tetapi itu akan lebih kompleks karena melibatkan penambahan/penghapusan item dalam array.
+                  Untuk saat ini, kita fokus pada status dan completed. */}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEditProductionDialog(false)} variant="outlined">Batal</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEditProduction}
+            startIcon={<Edit />}
+            // Anda bisa menambahkan validasi di sini sebelum mengaktifkan tombol Simpan
+            disabled={!editProductionData?.name || !editProductionData?.target || editProductionData?.target <= 0 || !editProductionData?.startDate || !editProductionData?.endDate || (editProductionData?.startDate > editProductionData?.endDate)}
+          >
+            Simpan Perubahan
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* NEW: Dialog Konfirmasi Hapus */}
+      <Dialog
+        open={openConfirmDeleteDialog}
+        onClose={() => setOpenConfirmDeleteDialog(false)}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">{"Konfirmasi Penghapusan"}</DialogTitle>
+        <DialogContent>
+          <Typography id="alert-dialog-description">
+            Apakah Anda yakin ingin menghapus produksi "<strong>{itemToDelete?.name}</strong>" (ID: {itemToDelete?.id})?
+            Tindakan ini tidak dapat dibatalkan.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenConfirmDeleteDialog(false)} color="primary">
+            Batal
+          </Button>
+          <Button onClick={handleDeleteProduction} color="error" variant="contained" autoFocus>
+            Hapus
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar untuk notifikasi */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3000}
+        autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
         <Alert
           onClose={() => setSnackbar({ ...snackbar, open: false })}

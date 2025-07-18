@@ -4,199 +4,183 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time" // Import time package
+	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause" // Import clause for eager loading
 )
 
-// Struct model sesuai dengan tabel calibration dan relasi
-
-// InventoryPartial mewakili data Inventory yang relevan untuk relasi kalibrasi
-// Kita hanya perlu ID dan mungkin Nama Item jika ingin menampilkannya.
-type InventoryPartial struct {
-	gorm.Model
-	InventoryID int    `json:"inventory_id" gorm:"column:inventory_id;primaryKey"` // Sesuaikan autoIncrement jika perlu
-	Name        string `json:"name" gorm:"column:name"`                            // Contoh jika ingin nama item
-}
-
-// Calibration mewakili struktur data untuk item kalibrasi
+// Calibration mewakili struktur data untuk tabel 'calibration'
+// Tanpa relasi InventoryID dan Inventory untuk penyederhanaan.
 type Calibration struct {
-	gorm.Model        // Menyediakan ID (calibration_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
-	CalibrationID int `json:"id" gorm:"column:calibration_id;primaryKey"` // Mapping id frontend ke calibration_id
+	CalibrationID int `json:"id" gorm:"column:calibration_id;primaryKey;autoIncrement"`
 
-	ToolName     string    `json:"name" gorm:"column:tool_name"` // Mapping name frontend ke tool_name
+	ToolName     string    `json:"name" gorm:"column:tool_name"`
 	Status       string    `json:"status" gorm:"column:status"`
-	ProgressStep int       `json:"progress" gorm:"column:progress_step"`     // Mapping progress frontend ke progress_step
-	DueDate      time.Time `json:"dueDate" gorm:"column:due_date;type:date"` // Mapping dueDate frontend ke due_date
-	LastUpdate   time.Time `json:"lastUpdate" gorm:"column:last_update"`
-
-	// Foreign Key ke tabel inventory (opsional)
-	InventoryID *uint `json:"inventory_id,omitempty" gorm:"column:inventory_id"` // Use pointer for nullable FK
-
-	// Relasi ke Inventory (jika perlu dimuat)
-	Inventory *InventoryPartial `json:"inventory,omitempty"` // Relasi ke InventoryPartial
-
+	ProgressStep int       `json:"progress" gorm:"column:progress_step"` // Progress step (0-5)
+	DueDate      time.Time `json:"dueDate" gorm:"column:due_date;type:date"`
+	LastUpdate   time.Time `json:"lastUpdate" gorm:"column:last_update"` // Menggunakan time.Time untuk datetime
 }
 
-var db *gorm.DB
+// TableName mengembalikan nama tabel di database untuk model Calibration
+func (Calibration) TableName() string {
+	return "calibration"
+}
 
+var db *gorm.DB // Variabel global untuk instance GORM DB
+
+// Init menginisialisasi modul kalibrasi dengan instance database GORM
 func Init(dbInstance *gorm.DB) {
 	db = dbInstance
-
+	log.Println("Kalibrasi module initialized (simplified).")
 }
 
-// getAllCalibrations mengambil semua item kalibrasi dari database beserta relasi (jika diperlukan)
+// getAllCalibrations mengambil semua item kalibrasi dari database.
+// Tidak ada Preload karena tidak ada relasi yang dikelola di sini.
 func getAllCalibrations(c *gin.Context) {
 	var calibrationItems []Calibration
-	// Menggunakan Preload jika Anda mendefinisikan relasi ke tabel lain
-	if result := db.Preload(clause.Associations).Find(&calibrationItems); result.Error != nil {
-		log.Printf("Error saat mengambil data kalibrasi: %v", result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data Kalibrasi", "details": result.Error.Error()})
+	if result := db.Find(&calibrationItems); result.Error != nil {
+		log.Printf("Error fetching all calibration items: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch calibration data", "details": result.Error.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, calibrationItems)
 }
 
-// getCalibrationByID mengambil item kalibrasi berdasarkan ID database
+// getCalibrationByID mengambil item kalibrasi berdasarkan ID dari database.
+// Tidak ada Preload.
 func getCalibrationByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID Kalibrasi tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid calibration ID"})
 		return
 	}
 
 	var item Calibration
-	// Menggunakan Preload jika diperlukan
-	if result := db.Preload(clause.Associations).First(&item, id); result.Error != nil {
+	if result := db.First(&item, id); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Item Kalibrasi tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Calibration item not found"})
 		} else {
-			log.Printf("Error saat mengambil kalibrasi dengan ID %d: %v", id, result.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data Kalibrasi", "details": result.Error.Error()})
+			log.Printf("Error fetching calibration item with ID %d: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch calibration data", "details": result.Error.Error()})
 		}
 		return
 	}
-
 	c.JSON(http.StatusOK, item)
 }
 
-// createCalibration menambahkan item kalibrasi baru ke database
+// createCalibration menambahkan item kalibrasi baru ke database.
+// Tidak ada penanganan InventoryID.
 func createCalibration(c *gin.Context) {
 	var newItem Calibration
 	if err := c.ShouldBindJSON(&newItem); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		log.Printf("Error binding JSON for createCalibration: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data format", "details": err.Error()})
 		return
 	}
 
-	// Validasi sederhana
+	// Validasi field yang wajib
 	if newItem.ToolName == "" || newItem.Status == "" || newItem.DueDate.IsZero() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (name, status, dueDate) wajib diisi"})
+		log.Printf("Validation failed for createCalibration: required fields are empty or invalid date.")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Fields 'name', 'status', and 'dueDate' are required."})
 		return
 	}
-	// Set progress awal ke 0 jika status "Belum Dimulai" atau dari input frontend
-	if newItem.Status == "Belum Dimulai" {
-		newItem.ProgressStep = 0
+	// Asumsi max steps 5 (0-4 atau 1-5), sesuaikan jika perlu
+	if newItem.ProgressStep < 0 || newItem.ProgressStep > 5 {
+		log.Printf("Validation failed for createCalibration: invalid progress step %d.", newItem.ProgressStep)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Progress step must be between 0 and 5."})
+		return
 	}
-	// Anda bisa juga menambahkan validasi untuk ProgressStep (misal 0 sampai jumlah steps)
 
-	// Jika calibration_id di database auto-increment, atur ke 0
 	newItem.CalibrationID = 0
-	// Set waktu terakhir update
 	newItem.LastUpdate = time.Now()
 
-	// *** Penanganan Foreign Key saat Create:
-	// Jika frontend mengirimkan InventoryID terkait, Anda perlu menugaskannya ke field FK.
-	// Contoh: if newItem.InventoryID != nil { ... validasi jika perlu ... }
-	// Implementasi penautan ke item terkait memerlukan logika tambahan jika frontend
-	// tidak langsung mengirim ID database.
-
-	// Menggunakan GORM untuk membuat data baru
+	log.Printf("Attempting to create calibration item: %+v", newItem)
 	if result := db.Create(&newItem); result.Error != nil {
-		log.Printf("Error saat menambahkan item kalibrasi: %v", result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menambahkan item Kalibrasi", "details": result.Error.Error()})
+		log.Printf("Error creating calibration item in DB: %v", result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create calibration item", "details": result.Error.Error()})
 		return
 	}
+	log.Printf("Successfully created calibration item with ID: %d", newItem.CalibrationID)
 
-	// Muat ulang entri dengan ID database yang sudah dibuat untuk respons
+	// Muat ulang item yang baru dibuat untuk respons (tanpa Preload)
 	var createdItem Calibration
-	db.Preload(clause.Associations).First(&createdItem, newItem.CalibrationID) // Ambil dengan ID yang sudah diisi oleh GORM
+	db.First(&createdItem, newItem.CalibrationID)
 
-	c.JSON(http.StatusCreated, createdItem) // Kirim kembali item yang baru ditambahkan
+	c.JSON(http.StatusCreated, createdItem)
 }
 
-// updateCalibration memperbarui item kalibrasi di database
+// updateCalibration memperbarui item kalibrasi di database.
+// Tidak ada penanganan InventoryID.
 func updateCalibration(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID Kalibrasi tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid calibration ID"})
 		return
 	}
 
 	var updatedItem Calibration
 	if err := c.ShouldBindJSON(&updatedItem); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid", "details": err.Error()})
+		log.Printf("Error binding JSON for updateCalibration: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data format", "details": err.Error()})
 		return
 	}
 
-	// Validasi sederhana
+	// Validasi field yang wajib
 	if updatedItem.ToolName == "" || updatedItem.Status == "" || updatedItem.DueDate.IsZero() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (name, status, dueDate) wajib diisi"})
+		log.Printf("Validation failed for updateCalibration: required fields are empty or invalid date.")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Fields 'name', 'status', and 'dueDate' are required."})
 		return
 	}
-	// Validasi ProgressStep
-	if updatedItem.ProgressStep < 0 || updatedItem.ProgressStep > 5 { // Asumsi max steps 5 (0-4)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Langkah progres tidak valid"})
+	// Asumsi max steps 5 (0-4 atau 1-5), sesuaikan jika perlu
+	if updatedItem.ProgressStep < 0 || updatedItem.ProgressStep > 5 {
+		log.Printf("Validation failed for updateCalibration: invalid progress step %d.", updatedItem.ProgressStep)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Progress step must be between 0 and 5."})
 		return
 	}
 
-	// Cari item yang ada berdasarkan ID (primary key)
+	// Cari item yang ada berdasarkan ID
 	var item Calibration
-	if result := db.Preload(clause.Associations).First(&item, id); result.Error != nil {
+	if result := db.First(&item, id); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Item Kalibrasi tidak ditemukan"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Calibration item not found"})
 		} else {
-			log.Printf("Error saat mencari item kalibrasi dengan ID %d untuk diperbarui: %v", id, result.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item Kalibrasi", "details": result.Error.Error()})
+			log.Printf("Error finding calibration item with ID %d for update: %v", id, result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find calibration item", "details": result.Error.Error()})
 		}
 		return
 	}
 
-	// Update field item yang ada
+	// Update field item yang ada dengan data dari updatedItem
 	item.ToolName = updatedItem.ToolName
 	item.Status = updatedItem.Status
 	item.ProgressStep = updatedItem.ProgressStep
 	item.DueDate = updatedItem.DueDate
-	item.LastUpdate = time.Now() // Update waktu terakhir update
+	item.LastUpdate = time.Now() // Perbarui waktu terakhir update
 
-	// Update foreign key jika frontend mengirimkannya
-	// item.InventoryID = updatedItem.InventoryID
-
-	// Menggunakan GORM untuk menyimpan perubahan
+	log.Printf("Attempting to update calibration item ID %d: %+v", id, item)
 	if result := db.Save(&item); result.Error != nil {
-		log.Printf("Error saat memperbarui item kalibrasi dengan ID %d: %v", id, result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui item Kalibrasi", "details": result.Error.Error()})
+		log.Printf("Error updating calibration item with ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update calibration item", "details": result.Error.Error()})
 		return
 	}
+	log.Printf("Successfully updated calibration item ID: %d", item.CalibrationID)
 
-	// Muat ulang entri dengan perubahan untuk respons
+	// Muat ulang item yang sudah diperbarui untuk respons (tanpa Preload)
 	var savedItem Calibration
-	db.Preload(clause.Associations).First(&savedItem, item.CalibrationID)
+	db.First(&savedItem, item.CalibrationID)
 
-	c.JSON(http.StatusOK, savedItem) // Kirim kembali item yang diperbarui
+	c.JSON(http.StatusOK, savedItem)
 }
 
-// deleteCalibration menghapus item kalibrasi dari database
+// deleteCalibration menghapus item kalibrasi dari database.
 func deleteCalibration(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID Kalibrasi tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid calibration ID"})
 		return
 	}
 
@@ -204,28 +188,35 @@ func deleteCalibration(c *gin.Context) {
 	var item Calibration
 	if result := db.First(&item, id); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Item Kalibrasi tidak ditemukan"})
-		} else {
-			log.Printf("Error saat mencari item kalibrasi dengan ID %d untuk dihapus: %v", id, result.Error)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencari item Kalibrasi", "details": result.Error.Error()})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Calibration item not found"})
+			return
 		}
+		log.Printf("Error finding calibration item with ID %d for deletion: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find calibration item", "details": result.Error.Error()})
 		return
 	}
 
-	// Menggunakan GORM untuk menghapus data
+	log.Printf("Attempting to delete calibration item with ID: %d", id)
 	if result := db.Delete(&item); result.Error != nil {
-		log.Printf("Error saat menghapus item kalibrasi dengan ID %d: %v", id, result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus item Kalibrasi", "details": result.Error.Error()})
+		log.Printf("Error deleting calibration item with ID %d: %v", id, result.Error)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete calibration item", "details": result.Error.Error()})
 		return
 	}
+	log.Printf("Successfully deleted calibration item with ID: %d", id)
 
-	c.JSON(http.StatusNoContent, nil) // 204 No Content
+	c.Status(http.StatusNoContent)
 }
 
+// RegisterRoutes mendaftarkan rute API untuk modul kalibrasi.
 func RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/", getAllCalibrations)
+	r.GET("", getAllCalibrations)
+
 	r.GET("/:id", getCalibrationByID)
+
 	r.POST("/", createCalibration)
+	r.POST("", createCalibration)
+
 	r.PUT("/:id", updateCalibration)
 	r.DELETE("/:id", deleteCalibration)
 }

@@ -71,6 +71,22 @@ type QualityControl struct {
 	PassRate int `json:"passRate" gorm:"-"` // Field transient
 }
 
+func (QualityControl) TableName() string {
+	return "quality_control"
+}
+func (Inventory) TableName() string {
+	return "inventory"
+}
+func (Rekayasa) TableName() string {
+	return "rekayasa"
+}
+func (Produksi) TableName() string {
+	return "produksi"
+}
+func (Overhaul) TableName() string {
+	return "overhaul"
+}
+
 // parseFrontendID parses a frontend ID string into department prefix and numeric ID.
 // Expected format: PREFIX-NNN (e.g., PRD-123)
 func parseFrontendID(frontendID string) (departmentPrefix string, numericID int, err error) {
