@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import axios from 'axios' ;
 import {
   Box,
@@ -48,7 +48,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Sample data for different departments
+// Sample data for different departments (as a fallback)
 const initialData = {
   production: [
     { id: "PRD-001", product: "Radio Lokomotif", batch: "BATCH-2023-11", status: "Lulus", tested: 25, passed: 25, date: "2023-11-05", department: "Production" },
@@ -70,10 +70,9 @@ const initialData = {
 };
 
 
-
 export default function QualityControl() {
   const [activeTab, setActiveTab] = useState('all');
-  const [data, setData] = useState(initialData);
+  const [data, setData] = useState(initialData); // Use initialData as a fallback
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc');
@@ -89,6 +88,7 @@ export default function QualityControl() {
     date: '',
     department: 'Production',
   });
+  const [loading, setLoading] = useState(true); // State for loading indicator
 
   // Combine all data for the "All" tab
   const allData = useMemo(() => {
@@ -136,6 +136,10 @@ export default function QualityControl() {
     }
   };
 
+  // Opens the "Add New QC Entry" modal
+  const handleOpenAddModal = () => {
+    setOpenAddModal(true);
+  };
 
   // Closes the "Add New QC Entry" modal and resets the form
   const handleCloseAddModal = () => {
@@ -171,47 +175,97 @@ export default function QualityControl() {
 
   // Adds a new QC entry to the appropriate department
   const handleAddNewQc = () => {
-  const department = newQcEntry.department.toLowerCase();
-  const entryToAdd = {
-    ...newQcEntry,
-    tested: parseInt(newQcEntry.tested),
-    passed: parseInt(newQcEntry.passed),
+    // When adding a new QC entry, we'll post it to the /api/qc endpoint.
+    // The backend's createQualityControl function will handle linking to
+    // other departments if FrontendID is provided.
+    const entryToAdd = {
+      ...newQcEntry,
+      tested: parseInt(newQcEntry.tested),
+      passed: parseInt(newQcEntry.passed),
+      // If you want to link it to an existing item from Production/Overhaul,
+      // you would add a 'FrontendID' field here, e.g., 'PRD-123'
+      // FrontendID: 'PRD-XXX', // Uncomment and set if needed
+    };
+
+    axios.post('/api/qc', entryToAdd) // Post to the combined QC API
+      .then(() => {
+        // After adding, refetch all data to update the UI
+        fetchData();
+        handleCloseAddModal();
+      })
+      .catch((err) => {
+        console.error('Gagal menambahkan data QC:', err);
+      });
   };
-
-  axios.post('/api/qc', entryToAdd)
-    .then(() => axios.get('/api/qc'))
-    .then((res) => {
-      setData(res.data);
-
-      // Bisa juga disisipkan update manual jika dibutuhkan:
-      // setData(prev => ({
-      //   ...prev,
-      //   [department]: [...prev[department], entryToAdd]
-      // }));
-
-      handleCloseAddModal();
-    })
-    .catch((err) => {
-      console.error('Gagal menambahkan data QC:', err);
-    });
-  };
-
-  
 
   // Handles sending item back to its original department for repair
   const handleSendForRepair = () => {
-  if (!selectedItem) return;
+    if (!selectedItem) return;
 
-  axios.put(`/api/qc/${selectedItem.id}`, { status: 'Dalam Perbaikan' })
-    .then(() => axios.get('/api/qc'))
-    .then((res) => {
-      setData(res.data);
-      handleCloseRepairModal();
-    })
-    .catch((err) => {
-      console.error('Gagal mengirim ke perbaikan:', err);
-    });
-};
+    // The backend's updateQualityControl function will handle the status change.
+    // We send the ID of the QC entry, which corresponds to QcID in backend.
+    axios.put(`/api/qc/${selectedItem.id}`, { status: 'Dalam Perbaikan' })
+      .then(() => {
+        // After updating, refetch all data to update the UI
+        fetchData();
+        handleCloseRepairModal();
+      })
+      .catch((err) => {
+        console.error('Gagal mengirim ke perbaikan:', err);
+      });
+  };
+
+  // Function to fetch data from the combined backend API (/api/qc)
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const qcResponse = await axios.get('/api/qc');
+      const rawQcData = Array.isArray(qcResponse.data) ? qcResponse.data : [];
+
+      const formattedData = {
+        production: [],
+        overhaul: [],
+        rekayasa: [],
+        kalibrasi: [],
+      };
+
+      rawQcData.forEach(item => {
+        // Ensure 'id' is a string for React keys, and 'date' is formatted
+        const formattedItem = {
+          ...item,
+          id: item.id ? String(item.id) : String(item.FrontendID || `temp-${Math.random().toString(36).substr(2, 9)}`), // Ensure a string ID for React key
+          date: item.date ? new Date(item.date).toISOString().split('T')[0] : '', // Format date to YYYY-MM-DD
+        };
+
+        // Distribute items based on their 'department' field from the backend
+        const departmentKey = formattedItem.department.toLowerCase();
+        if (formattedData[departmentKey]) {
+          formattedData[departmentKey].push(formattedItem);
+        } else {
+          // Fallback for unknown department, e.g., put in production or log
+          console.warn(`Unknown department '${formattedItem.department}' for item ID: ${formattedItem.id}. Placing in 'all' tab.`);
+          formattedData.production.push(formattedItem); // Or handle as needed
+        }
+      });
+
+      setData(formattedData);
+    } catch (err) {
+      console.error('Gagal memuat data QC dari backend:', err);
+      setData(initialData); // Fallback to initialData on error
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch data on component mount
+  useEffect(() => {
+    fetchData();
+  }, []); // Empty dependency array means this runs once on mount
+
+  // Log data whenever it changes (for debugging)
+  useEffect(() => {
+    console.log("Data QC di frontend (setelah fetch):", data);
+  }, [data]);
 
   // Memoized data for filtering and sorting
   const filteredAndSortedData = useMemo(() => {
@@ -232,7 +286,11 @@ export default function QualityControl() {
         let valA = a[sortColumn];
         let valB = b[sortColumn];
 
-        if (sortColumn === 'tested' || sortColumn === 'passed') {
+        // Handle date sorting
+        if (sortColumn === 'date') {
+            valA = new Date(valA);
+            valB = new Date(valB);
+        } else if (sortColumn === 'tested' || sortColumn === 'passed' || sortColumn === 'passRate') {
           valA = parseInt(valA);
           valB = parseInt(valB);
         }
@@ -248,38 +306,6 @@ export default function QualityControl() {
     }
     return tempData.slice(0, 50);
   }, [currentData, searchTerm, sortColumn, sortDirection]);
-  const [loading, setLoading] = useState(true);
-
-useEffect(() => {
-  axios.get('/api/qc')
-    .then((res) => {
-      const raw = res.data;
-
-      const formatted = {
-        production: raw.filter(q => q.department.toLowerCase().includes("production")),
-        overhaul: raw.filter(q => q.department.toLowerCase().includes("overhaul")),
-        rekayasa: raw.filter(q => q.department && q.department.toLowerCase() === "rekayasa"),
-        kalibrasi: raw.filter(q => q.department && q.department.toLowerCase() === "kalibrasi"),
-
-      };
-
-      setData(formatted);
-    })
-    .catch((err) => {
-      console.error('Gagal memuat data QC:', err);
-      setData(initialData);
-    })
-    .finally(() => {
-      setLoading(false);
-    });
-}, []);
-
-useEffect(() => {
-  console.log("Data QC dari backend:", data);
-}, [data]);
-
-
-
 
 
   // Calculate statistics
@@ -299,8 +325,8 @@ useEffect(() => {
     datasets: [
       {
         data: [
-          statusCounts["Lulus"], 
-          statusCounts["Dalam Proses"], 
+          statusCounts["Lulus"],
+          statusCounts["Dalam Proses"],
           statusCounts["Tidak Lulus"],
           statusCounts["Dalam Perbaikan"]
         ],
@@ -444,52 +470,52 @@ if (loading) {
                     "Dalam Perbaikan": '#2196F3'
                   };
                   return (
-                   <TableRow key={row.id || row.FrontendID} hover>
-                   <TableCell>{row.id || row.FrontendID}</TableCell>
-                      <TableCell>{row.department}</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>{row.product}</TableCell>
-                      <TableCell>{row.batch}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={row.status}
-                          variant="outlined"
-                          color={
-                            row.status === "Lulus" ? "success" :
-                            row.status === "Dalam Proses" ? "warning" :
-                            row.status === "Tidak Lulus" ? "error" : "info"
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>{row.tested} / {row.passed}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={passRate}
-                            sx={{
-                              flex: 1,
-                              height: 8,
-                              borderRadius: 4,
-                              '& .MuiLinearProgress-bar': {
-                                backgroundColor: colorMap[row.status],
-                                borderRadius: 4,
-                              }
-                            }}
-                          />
-                          <Typography variant="body2">{passRate}%</Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>{row.date}</TableCell>
-                      <TableCell>
-                        <Button 
-                          size="small" 
-                          sx={{ color: '#9C27B0', textTransform: 'none' }}
-                          onClick={() => handleOpenRepairModal(row)}
-                        >
-                          {row.status === "Tidak Lulus" ? "Perbaiki" : "Detail"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                   <TableRow key={row.id} hover> {/* Use row.id directly as it's now guaranteed to be a unique string */}
+                   <TableCell>{row.id}</TableCell>
+                     <TableCell>{row.department}</TableCell>
+                     <TableCell sx={{ fontWeight: 'bold' }}>{row.product}</TableCell>
+                     <TableCell>{row.batch}</TableCell>
+                     <TableCell>
+                       <Chip
+                         label={row.status}
+                         variant="outlined"
+                         color={
+                           row.status === "Lulus" ? "success" :
+                           row.status === "Dalam Proses" ? "warning" :
+                           row.status === "Tidak Lulus" ? "error" : "info"
+                         }
+                       />
+                     </TableCell>
+                     <TableCell>{row.tested} / {row.passed}</TableCell>
+                     <TableCell>
+                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                         <LinearProgress
+                           variant="determinate"
+                           value={passRate}
+                           sx={{
+                             flex: 1,
+                             height: 8,
+                             borderRadius: 4,
+                             '& .MuiLinearProgress-bar': {
+                               backgroundColor: colorMap[row.status],
+                               borderRadius: 4,
+                             }
+                           }}
+                         />
+                         <Typography variant="body2">{passRate}%</Typography>
+                       </Box>
+                     </TableCell>
+                     <TableCell>{row.date}</TableCell>
+                     <TableCell>
+                       <Button
+                         size="small"
+                         sx={{ color: '#9C27B0', textTransform: 'none' }}
+                         onClick={() => handleOpenRepairModal(row)}
+                       >
+                         {row.status === "Tidak Lulus" ? "Perbaiki" : "Detail"}
+                       </Button>
+                     </TableCell>
+                   </TableRow>
                   );
                 })}
               </TableBody>

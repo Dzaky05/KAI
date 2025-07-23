@@ -11,25 +11,49 @@ import {
 } from '@mui/icons-material';
 
 const Profile = () => {
-
   const theme = useTheme();
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState({
-    name: 'Asep Hidayat S.Kom M.Kom', 
-    nip: '198003012005011001',
-    email: 'asep.hidayat@kai.co.id',
-    phoneNumber: '0812-3456-7890', // Hanya satu nomor telepon
-    address: 'Jl. Stasiun Timur No. 12, Bandung, Jawa Barat'
+    name: 'Loading Profile...', // Default value saat memuat
+    nip: '',
+    email: '',
+    // phoneNumber: '', // Jika API Anda mengembalikan array, sesuaikan
+    phoneNumber: '', 
+    address: ''
   });
- useEffect(() => {
-  axios.get('/api/profile')
-    .then((res) => {
-      setProfileData(res.data);
-    })
-    .catch((err) => {
-      console.error("Gagal mengambil data profil:", err);
-    });
-}, []);
+
+  useEffect(() => {
+    axios.get('/api/profile')
+      .then((res) => {
+        // Asumsi API /api/profile akan mengembalikan array profil
+        // Kita ambil objek profil pertama jika ada
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setProfileData(res.data[0]); // Ambil objek profil pertama dari array
+        } else {
+          console.warn("API /api/profile mengembalikan data kosong atau tidak valid. Menggunakan data default.");
+          // Jika API mengembalikan array kosong atau tidak ada data, gunakan nilai default
+          setProfileData({
+            name: 'Default User',
+            nip: '',
+            email: '',
+            phoneNumber: '',
+            address: ''
+          });
+        }
+      })
+      .catch((err) => {
+        console.error("Gagal mengambil data profil:", err);
+        // Jika ada error saat fetch, set data ke nilai default atau tampilkan pesan error
+        setProfileData({
+          name: 'Error Loading Profile',
+          nip: '',
+          email: '',
+          phoneNumber: '',
+          address: ''
+        });
+      });
+  }, []);
+
   // Handle changes in the editable form fields
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -41,21 +65,25 @@ const Profile = () => {
 
   // Toggle edit mode and save changes
   const handleEditSaveToggle = () => {
-  if (editMode) {
-    // mode edit sedang aktif → sekarang kita mau simpan
-    axios.put('/api/profile', profileData)
-      .then(() => {
-        console.log('Data berhasil disimpan ke server!');
-        setEditMode(false);
-      })
-      .catch((err) => {
-        console.error('Gagal menyimpan data:', err);
-      });
-  } else {
-    // belum mode edit → aktifkan edit mode
-    setEditMode(true);
-  }
-};
+    if (editMode) {
+      // mode edit sedang aktif → sekarang kita mau simpan
+      // Perhatikan: Jika API Anda hanya mengizinkan PUT dengan ID, Anda mungkin perlu mengubah ini:
+      // axios.put(`/api/profile/${profileData.id}`, profileData)
+      // Asumsi /api/profile tanpa ID adalah untuk update tunggal jika hanya ada 1 profil
+      // atau PUT pada seluruh koleksi (kurang umum)
+      axios.put('/api/profile', profileData)
+        .then(() => {
+          console.log('Data berhasil disimpan ke server!');
+          setEditMode(false);
+        })
+        .catch((err) => {
+          console.error('Gagal menyimpan data:', err);
+        });
+    } else {
+      // belum mode edit → aktifkan edit mode
+      setEditMode(true);
+    }
+  };
 
   const recentActivities = [
     { id: 1, icon: <Event />, text: 'Updated production schedule', time: '2 hours ago' },
@@ -101,7 +129,8 @@ const Profile = () => {
                 border: `4px solid ${alpha(theme.palette.common.white, 0.5)}`,
                 boxShadow: `0 0 0 6px ${alpha(theme.palette.common.white, 0.3)}`,
               }}>
-                {profileData.name.split(' ').map(n => n[0]).join('')}
+                {/* PERBAIKAN UTAMA DI SINI */}
+                {profileData.name ? profileData.name.split(' ').map(n => n[0]).join('') : ''}
               </Avatar>
               <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
                 <Typography variant="h4" fontWeight="bold">

@@ -1,649 +1,999 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-
 import {
-  Box, Typography, Card, CardContent, Grid, Table, TableHead,
-  TableRow, TableCell, TableBody, TableContainer, Paper, TextField,
-  Button, IconButton, Snackbar, Alert, Tooltip, Chip,
-  Drawer, MenuItem, FormControl, InputLabel, Select, LinearProgress,
-  Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
-  List, ListItem, ListItemText, ListItemSecondaryAction, Divider // Added Divider for visual separation in drawer
+  Box, Typography, Card, CardContent, LinearProgress,
+  List, ListItem, ListItemText, Divider, Chip, Button, IconButton,
+  Dialog, DialogTitle, DialogContent, DialogActions, Stepper, Step, StepLabel,
+  Snackbar, Alert, TextField, Grid, Tooltip,
+  Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  CircularProgress, Select, MenuItem, InputLabel, FormControl
 } from '@mui/material';
 import {
-  Add, Delete, Edit, Download, Close, InfoOutlined, History as HistoryIcon // Added HistoryIcon
+  Add, CheckCircle, Warning, Error, Visibility, Delete, Edit,
+  KeyboardArrowLeft, KeyboardArrowRight, Build, LocationOn, Schedule, Person, Inventory, History
 } from '@mui/icons-material';
-import EngineeringIcon from '@mui/icons-material/Engineering';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { format, parseISO, isPast, isToday, addDays } from 'date-fns';
-import { id } from 'date-fns/locale'; // Untuk format tanggal Indonesia
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { format, parseISO, isValid } from 'date-fns';
 
-export default function OverhaulPoint() {
-  const [data, setData] = useState([
-    {
-      id: 1, name: 'KRD CC201-01', lokasi: 'Balai Yasa Yogyakarta', status: 'Proses', estimasi: '2025-07-20', progress: 75,
-      history: [
-        { id: 1, timestamp: '2025-07-01T10:00:00Z', description: 'Mulai perbaikan mesin utama.' },
-        { id: 2, timestamp: '2025-07-05T14:30:00Z', description: 'Penggantian komponen rem depan.' },
-      ]
-    },
-    {
-      id: 2, name: 'PM 202-EX', lokasi: 'Dipo Jakarta', status: 'Selesai', estimasi: '2025-07-01', progress: 100,
-      history: [
-        { id: 1, timestamp: '2025-06-10T09:00:00Z', description: 'Inspeksi awal dan identifikasi masalah.' },
-        { id: 2, timestamp: '2025-06-20T11:00:00Z', description: 'Penyelesaian perbaikan kelistrikan.' },
-        { id: 3, timestamp: '2025-07-01T16:00:00Z', description: 'Uji coba dan dinyatakan selesai.' },
-      ]
-    },
-    {
-      id: 3, name: 'Signal 7A', lokasi: 'Bandung Selatan', status: 'Pending', estimasi: '2025-08-10', progress: 0,
-      history: []
-    },
-    {
-      id: 4, name: 'Lokomotif BB304', lokasi: 'Balai Yasa Surabaya', status: 'Proses', estimasi: '2025-07-08', progress: 40,
-      history: [
-        { id: 1, timestamp: '2025-07-01T09:00:00Z', description: 'Inspeksi awal dan perencanaan.' },
-      ]
-    },
-    {
-      id: 5, name: 'Gerbong Barang', lokasi: 'Gudang Cirebon', status: 'Selesai', estimasi: '2025-06-15', progress: 100,
-      history: [
-        { id: 1, timestamp: '2025-06-01T10:00:00Z', description: 'Perbaikan kerusakan minor.' },
-        { id: 2, timestamp: '2025-06-15T12:00:00Z', description: 'Pengecatan dan finalisasi.' },
-      ]
-    },
-  ]);
-  const [search, setSearch] = useState('');
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [openDrawer, setOpenDrawer] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [currentItem, setCurrentItem] = useState({ id: null, name: '', lokasi: '', status: '', estimasi: '', progress: 0, history: [] }); // Initialize history
-  const [dialogOpen, setDialogOpen] = useState(false);
+const steps = [
+  "Informasi Umum",
+  "Detail Tambahan",
+  "Konfirmasi"
+];
+
+const statusOptions = ['Belum Dimulai', 'Dalam Proses', 'Selesai', 'Tertunda'];
+
+export default function Overhaul() {
+  // Main state
+  const [overhaulData, setOverhaulData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Dialog states
+  const [openAddDialog, setOpenAddDialog] = useState(false);
+  const [openDetailDialog, setOpenDetailDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openConfirmDeleteDialog, setOpenConfirmDeleteDialog] = useState(false);
+  
+  // Stepper state
+  const [activeStep, setActiveStep] = useState(0);
+  
+  // Form states
+  const [newOverhaul, setNewOverhaul] = useState({
+    name: '',
+    location: '',
+    status: 'Belum Dimulai',
+    estimate: null,
+    progress: 0,
+    personalia_id: null,
+    materials_id: null,
+    history_id: null,
+    inventory_id: null,
+  });
+
+  // Related data options
+  const [personaliaOptions, setPersonaliaOptions] = useState([]);
+  const [materialsOptions, setMaterialsOptions] = useState([]);
+  const [historyOptions, setHistoryOptions] = useState([]);
+  const [inventoryOptions, setInventoryOptions] = useState([]);
+  const [loadingRelatedData, setLoadingRelatedData] = useState(true);
+  const [errorRelatedData, setErrorRelatedData] = useState(null);
+
+  // Selected item states
+  const [selectedOverhaul, setSelectedOverhaul] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // State for adding new history
-  const [newHistoryDescription, setNewHistoryDescription] = useState('');
-  // State for editing history
-  const [editHistoryDialogOpen, setEditHistoryDialogOpen] = useState(false);
-  const [currentEditingHistory, setCurrentEditingHistory] = useState(null); // The history item being edited
-useEffect(() => {
-  fetchOverhaulData();
-}, []);
+  // Detail dialog additional states (for displaying multiple related items, assuming API provides them)
+  const [detailPersonnel, setDetailPersonnel] = useState([]); // Use a different name to avoid conflict with `personnel` if it's meant for form input
+  const [detailMaterials, setDetailMaterials] = useState([]); // Use a different name
+  const [detailProgress, setDetailProgress] = useState([]); // Use a different name
+  // These 'current' states are typically for adding new items in a form, not for display
+  // const [currentPersonnel, setCurrentPersonnel] = useState("");
+  // const [currentMaterialName, setCurrentMaterialName] = useState("");
+  // const [currentMaterialQty, setCurrentMaterialQty] = useState("");
+  // const [currentMaterialHarga, setCurrentMaterialHarga] = useState("");
+  // const [currentMaterialSatuan, setCurrentMaterialSatuan] = useState("");
 
-const fetchOverhaulData = async () => {
-  try {
-    const response = await axios.get('http://localhost:8080/api/overhaul'); // ganti sesuai endpointmu
-    setData(response.data);
-  } catch (error) {
-    console.error('Gagal mengambil data overhaul:', error);
-    setSnackbar({ open: true, message: 'Gagal mengambil data overhaul dari server.', severity: 'error' });
-  }
-};
+  // Snackbar
+  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
+  // API URLs
+  const API_BASE_URL = import.meta.env.VITE_API_URL;
+  const OVERHAUL_API_URL = `${API_BASE_URL}/api/overhaul`;
+  const PERSONALIA_API_URL = `${API_BASE_URL}/api/personalia`;
+  const MATERIALS_API_URL = `${API_BASE_URL}/api/materials`;
+  const HISTORY_API_URL = `${API_BASE_URL}/api/history`;
+  const INVENTORY_API_URL = `${API_BASE_URL}/api/inventory`;
 
-  const filteredData = data.filter(d =>
-    d.name.toLowerCase().includes(search.toLowerCase()) ||
-    d.lokasi.toLowerCase().includes(search.toLowerCase()) ||
-    d.status.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const handleOpenDrawer = (item = null) => {
-    if (item) {
-      setEditMode(true);
-      setCurrentItem({
-        ...item,
-        estimasi: item.estimasi || '', // Pastikan estimasi tidak undefined untuk input date
-        history: item.history || [] // Ensure history array exists
-      });
-    } else {
-      setEditMode(false);
-      setCurrentItem({ id: null, name: '', lokasi: '', status: 'Proses', estimasi: '', progress: 0, history: [] }); // Initialize empty history for new item
+  // Fetch main Overhaul data
+  const fetchOverhauls = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get(OVERHAUL_API_URL);
+      setOverhaulData(response.data);
+    } catch (err) {
+      console.error("Error fetching overhaul data:", err);
+      setError(err);
+      setSnackbar({ open: true, message: "Gagal memuat data overhaul.", severity: "error" });
+    } finally {
+      setLoading(false);
     }
-    setOpenDrawer(true);
   };
 
-  const handleCloseDrawer = () => {
-    setOpenDrawer(false);
-    setNewHistoryDescription(''); // Clear new history input
+  // Fetch related data for dropdowns
+  const fetchRelatedData = async () => {
+    setLoadingRelatedData(true);
+    setErrorRelatedData(null);
+    try {
+      const [personaliaRes, materialsRes, historyRes, inventoryRes] = await Promise.all([
+        axios.get(PERSONALIA_API_URL),
+        axios.get(MATERIALS_API_URL),
+        axios.get(HISTORY_API_URL),
+        axios.get(INVENTORY_API_URL)
+      ]);
+
+      setPersonaliaOptions(Array.isArray(personaliaRes.data) ? personaliaRes.data : []);
+      setMaterialsOptions(Array.isArray(materialsRes.data) ? materialsRes.data : []);
+      setHistoryOptions(Array.isArray(historyRes.data) ? historyRes.data : []);
+      setInventoryOptions(Array.isArray(inventoryRes.data) ? inventoryRes.data : []);
+      
+    } catch (err) {
+      console.error("Error fetching related data:", err);
+      setErrorRelatedData(err);
+      setSnackbar({ open: true, message: `Gagal memuat opsi terkait: ${err.message || "Terjadi kesalahan."}`, severity: "error" });
+    } finally {
+      setLoadingRelatedData(false);
+    }
   };
 
+  useEffect(() => {
+    fetchOverhauls();
+    fetchRelatedData();
+  }, []);
+
+  // Status summary calculations
+  const totalOverhauls = overhaulData.length;
+  const notStartedOverhauls = overhaulData.filter(o => o.status === 'Belum Dimulai').length;
+  const inProgressOverhauls = overhaulData.filter(o => o.status === 'Dalam Proses').length;
+  const completedOverhauls = overhaulData.filter(o => o.status === 'Selesai').length;
+
+  // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCurrentItem(prev => ({ ...prev, [name]: value }));
-  };
+    let newValue = value;
 
-  const handleSave = async () => {
-  if (!currentItem.name || !currentItem.lokasi || !currentItem.status || !currentItem.estimasi) {
-    setSnackbar({ open: true, message: 'Semua kolom wajib diisi!', severity: 'error' });
-    return;
-  }
-
-  try {
-    if (editMode) {
-      await axios.put(`http://localhost:8080/api/overhaul/${currentItem.id}`, currentItem);
-      setSnackbar({ open: true, message: 'Data berhasil diperbarui!', severity: 'success' });
-    } else {
-      await axios.post(`http://localhost:8080/api/overhaul`, currentItem);
-      setSnackbar({ open: true, message: 'Data berhasil ditambahkan!', severity: 'success' });
+    // Convert string empty to null for optional IDs
+    if (['personalia_id', 'materials_id', 'history_id', 'inventory_id'].includes(name)) {
+      newValue = value === '' ? null : Number(value);
+    } else if (name === 'progress') {
+      newValue = Number(value);
     }
-    fetchOverhaulData(); // Refresh data dari server
-    handleCloseDrawer();
-  } catch (err) {
-    console.error(err);
-    setSnackbar({ open: true, message: 'Gagal menyimpan ke server.', severity: 'error' });
-  }
-};
-
-
-  const handleDeleteClick = (id) => {
-    setItemToDelete(id);
-    setDialogOpen(true);
+    setNewOverhaul(prev => ({ ...prev, [name]: newValue }));
   };
 
-  const handleConfirmDelete = async () => {
-  try {
-    await axios.delete(`http://localhost:8080/api/overhaul/${itemToDelete}`);
-    setSnackbar({ open: true, message: 'Data overhaul berhasil dihapus!', severity: 'info' });
-    fetchOverhaulData(); // Refresh dari server
-  } catch (error) {
-    console.error('Gagal menghapus:', error);
-    setSnackbar({ open: true, message: 'Gagal menghapus data dari server.', severity: 'error' });
-  }
-  setDialogOpen(false);
-  setItemToDelete(null);
-};
-
-
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-    setItemToDelete(null);
+  // Handle DateTimePicker changes
+  const handleDateChange = (date) => {
+    setNewOverhaul(prev => ({ ...prev, estimate: date }));
   };
 
-  const exportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredData.map(item => ({
-      ID: item.id,
-      Nama: item.name,
-      Lokasi: item.lokasi,
-      Status: item.status,
-      Estimasi: format(parseISO(item.estimasi), 'dd MMMM yyyy', { locale: id }),
-      Progress: `${item.progress}%`,
-      Riwayat: item.history.map(h => `${format(parseISO(h.timestamp), 'dd/MM/yy HH:mm')} - ${h.description}`).join('; ')
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Overhaul');
-    XLSX.writeFile(wb, `Laporan_Overhaul_Point_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`);
-    setSnackbar({ open: true, message: 'Data diekspor ke Excel!', severity: 'success' });
-  };
-
-  const exportPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('Laporan Overhaul Point Machine', 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Tanggal Cetak: ${format(new Date(), 'dd MMMM yyyy HH:mm', { locale: id })}`, 14, 22);
-
-    autoTable(doc, {
-      startY: 30,
-      head: [['Nama', 'Lokasi', 'Status', 'Estimasi Selesai', 'Progres', 'Riwayat']],
-      body: filteredData.map(i => [
-        i.name,
-        i.lokasi,
-        i.status,
-        format(parseISO(i.estimasi), 'dd MMMM yyyy', { locale: id }),
-        `${i.progress}%`,
-        i.history.map(h => `${format(parseISO(h.timestamp), 'dd/MM/yy HH:mm')} - ${h.description}`).join('\n')
-      ]),
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
-      headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: 'bold' },
-      margin: { top: 25 },
-      columnStyles: {
-        5: { cellWidth: 50 } // Adjust width for history column
-      }
+  // Open Add Dialog
+  const handleOpenAddDialog = () => {
+    setActiveStep(0);
+    setNewOverhaul({
+      name: '',
+      location: '',
+      status: 'Belum Dimulai',
+      estimate: null,
+      progress: 0,
+      personalia_id: null,
+      materials_id: null,
+      history_id: null,
+      inventory_id: null,
     });
-    doc.save(`Laporan_Overhaul_Point_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
-    setSnackbar({ open: true, message: 'Data diekspor ke PDF!', severity: 'success' });
+    setOpenAddDialog(true);
   };
 
-  const getStatusColor = (status) => {
-    if (status === 'Selesai') return 'success';
-    if (status === 'Proses') return 'warning';
-    if (status === 'Pending') return 'info';
-    return 'default';
-  };
-
-  const getEstimasiWarning = (estimasiDate) => {
-    if (!estimasiDate || currentItem.status === 'Selesai') return null;
-    const date = parseISO(estimasiDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
-
-    if (isPast(date) && !isToday(date)) {
-      return { text: 'Terlambat!', color: 'error' };
+  // Open Edit Dialog
+  const handleOpenEditDialog = (item) => {
+    let parsedEstimate = null;
+    if (item.estimate && typeof item.estimate === 'string') {
+      try {
+        const dateObj = parseISO(item.estimate);
+        if (isValid(dateObj)) {
+          parsedEstimate = dateObj;
+        }
+      } catch (e) {
+        console.warn("Error parsing date:", e);
+      }
     }
-    if (date <= addDays(today, 7)) { // Within 7 days
-      return { text: 'Mendekati Deadline!', color: 'warning' };
+    
+    setNewOverhaul({
+      ...item,
+      estimate: parsedEstimate,
+      personalia_id: item.personalia_id || null,
+      materials_id: item.materials_id || null,
+      history_id: item.history_id || null,
+      inventory_id: item.inventory_id || null,
+      progress: item.progress !== undefined && item.progress !== null ? Number(item.progress) : 0,
+    });
+    setOpenEditDialog(true);
+  };
+
+  // Open Detail Dialog
+  const handleOpenDetailDialog = (item) => {
+    setSelectedOverhaul(item);
+    
+    // Initialize additional detail states based on the item (if available)
+    // IMPORTANT: These assume 'item' has 'personnel', 'materials', 'progress' arrays
+    // If your API does not return these, these will be empty.
+    setDetailPersonnel(item.personnel || []);
+    setDetailMaterials(item.materials || []);
+    setDetailProgress(item.progress || []);
+    
+    setOpenDetailDialog(true);
+  };
+
+  // Stepper Navigation
+  const handleNext = () => {
+    // Validation logic for each step
+    switch (activeStep) {
+      case 0: // Informasi Umum
+        if (!newOverhaul.name || !newOverhaul.status) {
+          setSnackbar({ open: true, message: "Nama item dan Status harus diisi.", severity: "warning" });
+          return;
+        }
+        const progressValue = Number(newOverhaul.progress);
+        if (isNaN(progressValue) || progressValue < 0 || progressValue > 100) {
+          setSnackbar({ open: true, message: "Progress harus angka antara 0 dan 100.", severity: "warning" });
+          return;
+        }
+        break;
+      case 1: // Detail Tambahan
+        // No specific validation for optional fields
+        break;
+      case 2: // Konfirmasi
+        // No validation needed
+        break;
+      default:
+        break;
     }
-    return null;
+    setActiveStep(prev => prev + 1);
   };
 
-  const totalOverhaul = data.length;
-  const inProgress = data.filter(item => item.status === 'Proses').length;
-  const completed = data.filter(item => item.status === 'Selesai').length;
+  const handleBack = () => {
+    setActiveStep(prev => prev - 1);
+  };
 
-  // --- History Management Functions ---
-  const handleAddNewHistory = () => {
-    if (newHistoryDescription.trim()) {
-      setCurrentItem((prev) => ({
-        ...prev,
-        history: [
-          ...prev.history,
-          {
-            id: Date.now(),
-            timestamp: new Date().toISOString(),
-            description: newHistoryDescription.trim(),
-          },
-        ],
-      }));
-      setNewHistoryDescription(''); // Clear input after adding
-      setSnackbar({ open: true, message: 'Riwayat berhasil ditambahkan!', severity: 'info' });
-    } else {
-      setSnackbar({ open: true, message: 'Deskripsi riwayat tidak boleh kosong.', severity: 'warning' });
+  // Save overhaul (both add and edit)
+  const handleSaveOverhaul = async (isEdit = false) => {
+    try {
+      let formattedEstimate = null;
+      if (newOverhaul.estimate instanceof Date && isValid(newOverhaul.estimate)) {
+        formattedEstimate = newOverhaul.estimate.toISOString();
+      } else if (newOverhaul.estimate !== null) {
+        setSnackbar({ open: true, message: "Format Tanggal & Waktu Estimasi tidak valid.", severity: "warning" });
+        return;
+      }
+
+      // Construct payload
+      const payload = {
+        name: newOverhaul.name,
+        status: newOverhaul.status,
+        progress: newOverhaul.progress,
+        location: newOverhaul.location || null,
+        estimate: formattedEstimate,
+        personalia_id: newOverhaul.personalia_id,
+        materials_id: newOverhaul.materials_id,
+        history_id: newOverhaul.history_id,
+        inventory_id: newOverhaul.inventory_id,
+        // If your backend supports saving arrays like these, uncomment and adjust:
+        // personnel: detailPersonnel, 
+        // materials: detailMaterials,
+        // progress: detailProgress
+      };
+
+      let response;
+      if (isEdit) {
+        response = await axios.put(`${OVERHAUL_API_URL}/${newOverhaul.id}`, payload);
+        setSnackbar({ open: true, message: "Overhaul berhasil diperbarui!", severity: "success" });
+      } else {
+        response = await axios.post(OVERHAUL_API_URL, payload);
+        setSnackbar({ open: true, message: "Overhaul berhasil ditambahkan!", severity: "success" });
+      }
+
+      // Close dialog and refresh data
+      setOpenAddDialog(false);
+      setOpenEditDialog(false);
+      fetchOverhauls();
+    } catch (error) {
+      console.error('Error saving overhaul:', error.response?.data || error.message);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || "Terjadi kesalahan saat menyimpan data.";
+      setSnackbar({ open: true, message: errorMessage, severity: "error" });
     }
   };
 
-  const handleOpenEditHistoryDialog = (historyItem) => {
-    setCurrentEditingHistory(historyItem);
-    setEditHistoryDialogOpen(true);
+  // Handle Delete
+  const handleDeleteConfirm = (item) => {
+    setItemToDelete(item);
+    setOpenConfirmDeleteDialog(true);
   };
 
-  const handleCloseEditHistoryDialog = () => {
-    setCurrentEditingHistory(null);
-    setEditHistoryDialogOpen(false);
-  };
-
-  const handleSaveEditedHistory = () => {
-    if (currentEditingHistory && currentEditingHistory.description.trim()) {
-      setCurrentItem((prev) => ({
-        ...prev,
-        history: prev.history.map((hist) =>
-          hist.id === currentEditingHistory.id
-            ? { ...currentEditingHistory, timestamp: new Date().toISOString() } // Update timestamp on edit
-            : hist
-        ),
-      }));
-      setSnackbar({ open: true, message: 'Riwayat berhasil diperbarui!', severity: 'success' });
-      handleCloseEditHistoryDialog();
-    } else {
-      setSnackbar({ open: true, message: 'Deskripsi riwayat tidak boleh kosong.', severity: 'warning' });
+  const handleDelete = async () => {
+    try {
+      await axios.delete(`${OVERHAUL_API_URL}/${itemToDelete.id}`);
+      setSnackbar({ open: true, message: "Overhaul berhasil dihapus!", severity: "success" });
+      setOpenConfirmDeleteDialog(false);
+      fetchOverhauls();
+    } catch (error) {
+      console.error('Error deleting overhaul:', error.response?.data || error.message);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || "Terjadi kesalahan saat menghapus data.";
+      setSnackbar({ open: true, message: errorMessage, severity: "error" });
     }
   };
 
-  const handleHistoryDescriptionChange = (e) => {
-    if (currentEditingHistory) {
-      setCurrentEditingHistory((prev) => ({
-        ...prev,
-        description: e.target.value,
-      }));
+  // Get status info for chips
+  const getStatusInfo = (status) => {
+    switch (status) {
+      case 'Selesai':
+        return { color: 'success', icon: <CheckCircle fontSize="small" /> };
+      case 'Dalam Proses':
+        return { color: 'warning', icon: <Warning fontSize="small" /> };
+      case 'Belum Dimulai':
+        return { color: 'info', icon: <Schedule fontSize="small" /> };
+      case 'Tertunda':
+        return { color: 'error', icon: <Error fontSize="small" /> };
+      default:
+        return { color: 'default', icon: null };
     }
   };
 
-  const handleDeleteHistory = (historyId) => {
-    setCurrentItem((prev) => ({
-      ...prev,
-      history: prev.history.filter((hist) => hist.id !== historyId),
-    }));
-    setSnackbar({ open: true, message: 'Riwayat berhasil dihapus.', severity: 'info' });
+  // Get step content for stepper
+  const getStepContent = (step) => {
+    switch (step) {
+      case 0:
+        return (
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                label="Nama Item Overhaul"
+                name="name"
+                value={newOverhaul.name}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Lokasi"
+                name="location"
+                value={newOverhaul.location || ''}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+                helperText="Opsional"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal" required>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  name="status"
+                  value={newOverhaul.status}
+                  label="Status"
+                  onChange={handleChange}
+                >
+                  {statusOptions.map((status) => (
+                    <MenuItem key={status} value={status}>{status}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateTimePicker
+                  label="Tanggal & Waktu Estimasi Selesai"
+                  value={newOverhaul.estimate}
+                  onChange={handleDateChange}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      fullWidth
+                      margin="normal"
+                      helperText="Opsional (Format: dd/mm/yyyy hh:mm AM/PM)"
+                    />
+                  )}
+                />
+              </LocalizationProvider>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Progress (%)"
+                name="progress"
+                type="number"
+                value={newOverhaul.progress}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+                inputProps={{ min: 0, max: 100 }}
+                required
+              />
+            </Grid>
+          </Grid>
+        );
+      case 1:
+        return (
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal" disabled={loadingRelatedData}>
+                <InputLabel>Penanggung Jawab (Personel) (Opsional)</InputLabel>
+                <Select
+                  name="personalia_id"
+                  value={newOverhaul.personalia_id || ''}
+                  label="Penanggung Jawab (Personel) (Opsional)"
+                  onChange={handleChange}
+                >
+                  <MenuItem value=""><em>Tidak ada</em></MenuItem>
+                  {loadingRelatedData ? (
+                    <MenuItem disabled><CircularProgress size={20} /> Memuat personel...</MenuItem>
+                  ) : (
+                    personaliaOptions.map((personel) => (
+                      <MenuItem key={personel.id} value={personel.id}>{personel.name}</MenuItem>
+                    ))
+                  )}
+                </Select>
+                {errorRelatedData && <Typography color="error" variant="caption">Gagal memuat opsi personel.</Typography>}
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal" disabled={loadingRelatedData}>
+                <InputLabel>Pilih Material (Opsional)</InputLabel>
+                <Select
+                  name="materials_id"
+                  value={newOverhaul.materials_id || ''}
+                  label="Pilih Material (Opsional)"
+                  onChange={handleChange}
+                >
+                  <MenuItem value=""><em>Tidak ada</em></MenuItem>
+                  {loadingRelatedData ? (
+                    <MenuItem disabled><CircularProgress size={20} /> Memuat material...</MenuItem>
+                  ) : (
+                    materialsOptions.map((material) => (
+                      <MenuItem key={material.id} value={material.id}>{material.name}</MenuItem>
+                    ))
+                  )}
+                </Select>
+                {errorRelatedData && <Typography color="error" variant="caption">Gagal memuat opsi material.</Typography>}
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal" disabled={loadingRelatedData}>
+                <InputLabel>History ID (Opsional)</InputLabel>
+                <Select
+                  name="history_id"
+                  value={newOverhaul.history_id || ''}
+                  label="History ID (Opsional)"
+                  onChange={handleChange}
+                >
+                  <MenuItem value=""><em>Tidak ada</em></MenuItem>
+                  {loadingRelatedData ? (
+                    <MenuItem disabled><CircularProgress size={20} /> Memuat history...</MenuItem>
+                  ) : (
+                    historyOptions.map((history) => (
+                      <MenuItem key={history.id} value={history.id}>{history.name}</MenuItem>
+                    ))
+                  )}
+                </Select>
+                {errorRelatedData && <Typography color="error" variant="caption">Gagal memuat opsi history.</Typography>}
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal" disabled={loadingRelatedData}>
+                <InputLabel>Inventory ID (Opsional)</InputLabel>
+                <Select
+                  name="inventory_id"
+                  value={newOverhaul.inventory_id || ''}
+                  label="Inventory ID (Opsional)"
+                  onChange={handleChange}
+                >
+                  <MenuItem value=""><em>Tidak ada</em></MenuItem>
+                  {loadingRelatedData ? (
+                    <MenuItem disabled><CircularProgress size={20} /> Memuat inventory...</MenuItem>
+                  ) : (
+                    inventoryOptions.map((inventory) => (
+                      <MenuItem key={inventory.id} value={inventory.id}>{inventory.name}</MenuItem>
+                    ))
+                  )}
+                </Select>
+                {errorRelatedData && <Typography color="error" variant="caption">Gagal memuat opsi inventory.</Typography>}
+              </FormControl>
+            </Grid>
+          </Grid>
+        );
+      case 2:
+        return (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="h6" gutterBottom>Review Data Overhaul:</Typography>
+            <List dense>
+              <ListItem><ListItemText primary={`Nama Item: ${newOverhaul.name}`} /></ListItem>
+              <ListItem><ListItemText primary={`Lokasi: ${newOverhaul.location || '-'}`} /></ListItem>
+              <ListItem><ListItemText primary={`Status: ${newOverhaul.status}`} /></ListItem>
+              <ListItem>
+                <ListItemText primary={`Estimasi Selesai: ${newOverhaul.estimate && isValid(newOverhaul.estimate) ? format(newOverhaul.estimate, 'dd/MM/yyyy HH:mm') : '-'}`} />
+              </ListItem>
+              <ListItem><ListItemText primary={`Progress: ${newOverhaul.progress}%`} /></ListItem>
+              <ListItem>
+                <ListItemText primary={`Penanggung Jawab: ${newOverhaul.personalia_id ? (personaliaOptions.find(p => p.id === newOverhaul.personalia_id)?.name || newOverhaul.personalia_id) : '-'}`} />
+              </ListItem>
+              <ListItem>
+                <ListItemText primary={`Materials: ${newOverhaul.materials_id ? (materialsOptions.find(m => m.id === newOverhaul.materials_id)?.name || newOverhaul.materials_id) : '-'}`} />
+              </ListItem>
+              <ListItem>
+                <ListItemText primary={`History: ${newOverhaul.history_id ? (historyOptions.find(h => h.id === newOverhaul.history_id)?.name || newOverhaul.history_id) : '-'}`} />
+              </ListItem>
+              <ListItem>
+                <ListItemText primary={`Inventory: ${newOverhaul.inventory_id ? (inventoryOptions.find(i => i.id === newOverhaul.inventory_id)?.name || newOverhaul.inventory_id) : '-'}`} />
+              </ListItem>
+            </List>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Pastikan semua data sudah benar sebelum menyimpan.
+            </Alert>
+          </Box>
+        );
+      default:
+        return 'Unknown step';
+    }
   };
-  // --- End History Management Functions ---
-
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 } }}>
-      <Box display="flex" alignItems="center" mb={3}>
-        <EngineeringIcon sx={{ color: '#007BFF', fontSize: 36, mr: 2 }} />
-        <Typography variant="h4" fontWeight="bold">Manajemen Overhaul Point Machine</Typography>
+      {/* Header */}
+      <Box display="flex" alignItems="center" mb={4}>
+        <Build sx={{ color: '#007BFF', fontSize: 40, mr: 2 }} />
+        <Typography variant="h4" fontWeight="bold">Manajemen Overhaul</Typography>
       </Box>
 
-      {/* Ringkasan Data */}
-      <Grid container spacing={2} mb={3}>
-        <Grid item xs={12} sm={6} md={4}>
-          <Card elevation={2}>
+      {/* Summary Dashboard */}
+      <Grid container spacing={3} mb={4}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={3}>
             <CardContent>
-              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Total Item Overhaul</Typography>
-              <Typography variant="h5" component="div" fontWeight="bold">{totalOverhaul}</Typography>
+              <Box display="flex" alignItems="center" mb={1}>
+                <Build color="primary" sx={{ mr: 1 }} />
+                <Typography variant="subtitle1" color="text.secondary">Total Overhaul</Typography>
+              </Box>
+              <Typography variant="h5" fontWeight="bold">{totalOverhauls}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <Card elevation={2}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={3}>
             <CardContent>
-              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Sedang Proses</Typography>
-              <Typography variant="h5" component="div" fontWeight="bold" color="warning.main">{inProgress}</Typography>
+              <Box display="flex" alignItems="center" mb={1}>
+                <Schedule color="info" sx={{ mr: 1 }} />
+                <Typography variant="subtitle1" color="text.secondary">Belum Dimulai</Typography>
+              </Box>
+              <Typography variant="h5" fontWeight="bold" color="info.dark">{notStartedOverhauls}</Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <Card elevation={2}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={3}>
             <CardContent>
-              <Typography variant="subtitle1" color="textSecondary" gutterBottom>Telah Selesai</Typography>
-              <Typography variant="h5" component="div" fontWeight="bold" color="success.main">{completed}</Typography>
+              <Box display="flex" alignItems="center" mb={1}>
+                <Warning color="warning" sx={{ mr: 1 }} />
+                <Typography variant="subtitle1" color="text.secondary">Dalam Proses</Typography>
+              </Box>
+              <Typography variant="h5" fontWeight="bold" color="warning.dark">{inProgressOverhauls}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card elevation={3}>
+            <CardContent>
+              <Box display="flex" alignItems="center" mb={1}>
+                <CheckCircle color="success" sx={{ mr: 1 }} />
+                <Typography variant="subtitle1" color="text.secondary">Selesai</Typography>
+              </Box>
+              <Typography variant="h5" fontWeight="bold" color="success.dark">{completedOverhauls}</Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Filter & Aksi */}
-      <Box display="flex" flexDirection={{ xs: 'column', sm: 'row' }} gap={2} mb={3} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
-        <TextField
-          size="small"
-          label="Cari Nama/Lokasi/Status"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          sx={{ flexGrow: 1 }}
-        />
-        <Box display="flex" gap={1} flexWrap="wrap">
-          <Button variant="outlined" startIcon={<Download />} onClick={exportExcel}>Excel</Button>
-          <Button variant="outlined" startIcon={<Download />} onClick={exportPDF}>PDF</Button>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' } }}
-            onClick={() => handleOpenDrawer()}
-          >
-            Tambah Overhaul
-          </Button>
-        </Box>
+      <Divider sx={{ mb: 4 }} />
+
+      {/* Main Action */}
+      <Box display="flex" justifyContent="flex-end" mb={3}>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={handleOpenAddDialog}
+        >
+          Tambah Overhaul
+        </Button>
       </Box>
 
-      {/* Tabel Overhaul */}
-      <TableContainer component={Paper} elevation={2}>
-        <Table>
-          <TableHead sx={{ bgcolor: '#f5f5f5' }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 'bold' }}>Nama Item</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Lokasi</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Estimasi Selesai</TableCell>
-              <TableCell sx={{ fontWeight: 'bold' }}>Progres</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 'bold' }}>Aksi</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredData.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} align="center">Tidak ada data overhaul ditemukan.</TableCell>
-              </TableRow>
-            ) : (
-              filteredData.map(item => (
-                <TableRow key={item.id} hover>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.lokasi}</TableCell>
-                  <TableCell>
-                    <Chip label={item.status} color={getStatusColor(item.status)} size="small" />
-                  </TableCell>
-                  <TableCell>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      {item.estimasi ? format(parseISO(item.estimasi), 'dd MMMM yyyy', { locale: id }) : '-'}
-                      {getEstimasiWarning(item.estimasi) && (
-                        <Tooltip title={getEstimasiWarning(item.estimasi).text}>
-                          <InfoOutlined color={getEstimasiWarning(item.estimasi).color} fontSize="small" />
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100px' }}>
-                      <LinearProgress
-                        variant="determinate"
-                        value={item.progress}
-                        sx={{
-                          width: '100%',
-                          height: 8,
-                          borderRadius: 5,
-                          backgroundColor: '#e0e0e0',
-                          '& .MuiLinearProgress-bar': {
-                            backgroundColor: item.progress === 100 ? '#4caf50' : '#2196f3',
-                          },
-                        }}
-                      />
-                      <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>{`${Math.round(item.progress)}%`}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title="Edit">
-                      <IconButton onClick={() => handleOpenDrawer(item)}><Edit color="primary" /></IconButton>
-                    </Tooltip>
-                    <Tooltip title="Hapus">
-                      <IconButton onClick={() => handleDeleteClick(item.id)}><Delete color="error" /></IconButton>
-                    </Tooltip>
-                  </TableCell>
+      {/* Overhaul List - Table */}
+      <TableContainer component={Paper} elevation={3}>
+        {/* Loading state */}
+        {loading && (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress size={24} sx={{ mb: 1 }} />
+            <Typography color="text.secondary">Memuat data overhaul...</Typography>
+          </Box>
+        )}
+
+        {/* Error state */}
+        {error && !loading && (
+          <Box sx={{ p: 3, textAlign: 'center', color: 'error.main' }}>
+            <Typography>Gagal memuat data overhaul.</Typography>
+            <Typography variant="body2">{error.message || "Terjadi kesalahan tidak diketahui."}</Typography>
+          </Box>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && overhaulData.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center', py: 3 }}>
+            <Typography variant="h6" color="text.secondary">Belum ada data overhaul.</Typography>
+            <Typography variant="body2" color="text.secondary">Klik "Tambah Overhaul" untuk memulai.</Typography>
+          </Box>
+        ) : (
+          (!loading && overhaulData.length > 0) ? (
+            <Table sx={{ minWidth: 650 }} aria-label="overhaul table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>ID</TableCell>
+                  <TableCell>Nama Item</TableCell>
+                  <TableCell>Lokasi</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Progress</TableCell>
+                  <TableCell>Estimasi Selesai</TableCell>
+                  <TableCell>Penanggung Jawab</TableCell>
+                  <TableCell align="center">Aksi</TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              </TableHead>
+              <TableBody>
+                {overhaulData.map((item) => {
+                  const statusInfo = getStatusInfo(item.status);
+                  
+                  return (
+                    <TableRow
+                      key={item.id}
+                      sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    >
+                      <TableCell component="th" scope="row">
+                        {item.id}
+                      </TableCell>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell>{item.location || '-'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={item.status}
+                          color={statusInfo.color}
+                          icon={statusInfo.icon}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box sx={{ width: '100%', mr: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={item.progress || 0}
+                              sx={{
+                                height: 8,
+                                borderRadius: 5,
+                                '& .MuiLinearProgress-bar': {
+                                  backgroundColor: statusInfo.color === 'success' ? '#4caf50' : '#2196f3',
+                                },
+                              }}
+                            />
+                          </Box>
+                          <Box sx={{ minWidth: 35 }}>
+                            <Typography variant="body2" color="text.secondary">{item.progress}%</Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        {item.estimate && isValid(parseISO(item.estimate))
+                          ? format(parseISO(item.estimate), 'dd/MM/yyyy HH:mm')
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {item.personalia_id ? (personaliaOptions.find(p => p.id === item.personalia_id)?.name || item.personalia_id) : '-'}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                          <Tooltip title="Edit Overhaul">
+                            <IconButton onClick={() => handleOpenEditDialog(item)} size="small" color="primary">
+                              <Edit />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Lihat Detail">
+                            <IconButton onClick={() => handleOpenDetailDialog(item)} size="small" color="info">
+                              <Visibility />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Hapus Overhaul">
+                            <IconButton onClick={() => handleDeleteConfirm(item)} size="small" color="error">
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : null
+        )}
       </TableContainer>
 
-      {/* Drawer Tambah/Edit */}
-      <Drawer
-        anchor="right"
-        open={openDrawer}
-        onClose={handleCloseDrawer}
-        PaperProps={{ sx: { width: { xs: '90%', sm: 450 } } }}
-      >
-        <Box sx={{ p: 3 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h6" fontWeight="bold">{editMode ? 'Edit Item Overhaul' : 'Tambah Item Overhaul Baru'}</Typography>
-            <IconButton onClick={handleCloseDrawer}><Close /></IconButton>
-          </Box>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Nama Item"
-                name="name"
-                value={currentItem.name}
-                onChange={handleChange}
-                required
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Lokasi"
-                name="lokasi"
-                value={currentItem.lokasi}
-                onChange={handleChange}
-                required
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth required>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  name="status"
-                  value={currentItem.status}
-                  label="Status"
-                  onChange={handleChange}
-                >
-                  <MenuItem value="Proses">Proses</MenuItem>
-                  <MenuItem value="Selesai">Selesai</MenuItem>
-                  <MenuItem value="Pending">Pending</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Estimasi Selesai"
-                type="date"
-                name="estimasi"
-                value={currentItem.estimasi}
-                onChange={handleChange}
-                InputLabelProps={{ shrink: true }}
-                required
-              />
-            </Grid>
-            {currentItem.status === 'Proses' && (
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Progres (%)"
-                  type="number"
-                  name="progress"
-                  value={currentItem.progress}
-                  onChange={handleChange}
-                  inputProps={{ min: 0, max: 100 }}
-                  helperText="Isi progres dalam persentase (0-100)"
-                />
-              </Grid>
-            )}
+      {/* Dialog Tambah Overhaul */}
+      <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Tambah Overhaul Baru</DialogTitle>
+        <DialogContent dividers>
+          <Stepper activeStep={activeStep} orientation="horizontal" sx={{ mb: 3 }}>
+            {steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+          {getStepContent(activeStep)}
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={activeStep === 0} onClick={handleBack} startIcon={<KeyboardArrowLeft />}>
+            Kembali
+          </Button>
+          <Button
+            variant="contained"
+            onClick={activeStep === steps.length - 1 ? () => handleSaveOverhaul(false) : handleNext}
+            endIcon={activeStep === steps.length - 1 ? <CheckCircle /> : <KeyboardArrowRight />}
+          >
+            {activeStep === steps.length - 1 ? 'Simpan' : 'Lanjut'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-            {/* History Section */}
-            <Grid item xs={12}>
-              <Divider sx={{ my: 3 }} /> {/* Added divider for separation */}
-              <Typography variant="h6" sx={{ mt: 3, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <HistoryIcon /> Riwayat Overhaul
-              </Typography>
-              <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                  <TextField
-                    label="Tambahkan Riwayat Baru"
-                    variant="outlined"
-                    fullWidth
-                    value={newHistoryDescription}
-                    onChange={(e) => setNewHistoryDescription(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAddNewHistory();
-                      }
-                    }}
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={handleAddNewHistory}
-                    startIcon={<Add />}
-                    sx={{ flexShrink: 0, borderRadius: 2 }}
-                  >
-                    Tambah
-                  </Button>
-                </Box>
+      {/* Dialog Edit Overhaul */}
+      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Overhaul: {newOverhaul.name}</DialogTitle>
+        <DialogContent dividers>
+          <Stepper activeStep={activeStep} orientation="horizontal" sx={{ mb: 3 }}>
+            {steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+          {getStepContent(activeStep)}
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={activeStep === 0} onClick={handleBack} startIcon={<KeyboardArrowLeft />}>
+            Kembali
+          </Button>
+          <Button
+            variant="contained"
+            onClick={activeStep === steps.length - 1 ? () => handleSaveOverhaul(true) : handleNext}
+            endIcon={activeStep === steps.length - 1 ? <CheckCircle /> : <KeyboardArrowRight />}
+          >
+            {activeStep === steps.length - 1 ? 'Simpan Perubahan' : 'Lanjut'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-                {currentItem.history.length > 0 ? (
-                  <List dense>
-                    {currentItem.history.map((hist) => (
-                      <ListItem
-                        key={hist.id}
-                        sx={{
-                          borderBottom: '1px solid #eee',
-                          '&:last-child': { borderBottom: 'none' },
-                        }}
-                      >
-                        <ListItemText
-                          primary={hist.description}
-                          secondary={format(parseISO(hist.timestamp), 'dd MMMM yyyy HH:mm', { locale: id })}
+      {/* Dialog Detail Overhaul */}
+      <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {selectedOverhaul?.name} 
+          <Chip label={`ID: ${selectedOverhaul?.id}`} size="small" sx={{ ml: 1 }} />
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedOverhaul && (
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Build sx={{ mr: 1 }} /> Informasi Umum
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemText primary={`Nama Item: ${selectedOverhaul.name}`} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary={`Lokasi: ${selectedOverhaul.location || '-'}`} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary={
+                      <>
+                        Status: <Chip
+                          label={selectedOverhaul.status}
+                          color={getStatusInfo(selectedOverhaul.status).color}
+                          icon={getStatusInfo(selectedOverhaul.status).icon}
+                          size="small"
+                          sx={{ ml: 1 }}
                         />
-                        <ListItemSecondaryAction>
-                          <Tooltip title="Edit Riwayat">
-                            <IconButton edge="end" aria-label="edit" onClick={() => handleOpenEditHistoryDialog(hist)}>
-                              <Edit fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Hapus Riwayat">
-                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteHistory(hist.id)} color="error">
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </ListItemSecondaryAction>
+                      </>
+                    } />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary={
+                      <>
+                        Progress:
+                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                          <Box sx={{ width: '100%', mr: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={selectedOverhaul.progress || 0}
+                              sx={{
+                                height: 8,
+                                borderRadius: 5,
+                                '& .MuiLinearProgress-bar': {
+                                  backgroundColor: getStatusInfo(selectedOverhaul.status).color === 'success' ? '#4caf50' : '#2196f3',
+                                },
+                              }}
+                            />
+                          </Box>
+                          <Box sx={{ minWidth: 35 }}>
+                            <Typography variant="body2" color="text.secondary">{selectedOverhaul.progress}%</Typography>
+                          </Box>
+                        </Box>
+                      </>
+                    } />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText 
+                      primary={`Estimasi Selesai: ${selectedOverhaul.estimate && isValid(parseISO(selectedOverhaul.estimate)) ? format(parseISO(selectedOverhaul.estimate), 'dd/MM/yyyy HH:mm') : '-'}`} 
+                    />
+                  </ListItem>
+                </List>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <InfoOutlined sx={{ mr: 1 }} /> Detail Terkait
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemText primary={
+                      `Penanggung Jawab: ${selectedOverhaul.personalia_id 
+                        ? (personaliaOptions.find(p => p.id === selectedOverhaul.personalia_id)?.name || `ID: ${selectedOverhaul.personalia_id}`) 
+                        : '-'}`
+                    } />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary={
+                      `Material Utama: ${selectedOverhaul.materials_id 
+                        ? (materialsOptions.find(m => m.id === selectedOverhaul.materials_id)?.name || `ID: ${selectedOverhaul.materials_id}`) 
+                        : '-'}`
+                    } />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary={
+                      `Catatan Riwayat: ${selectedOverhaul.history_id 
+                        ? (historyOptions.find(h => h.id === selectedOverhaul.history_id)?.name || `ID: ${selectedOverhaul.history_id}`) 
+                        : '-'}`
+                    } />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary={
+                      `Inventaris Terkait: ${selectedOverhaul.inventory_id 
+                        ? (inventoryOptions.find(i => i.id === selectedOverhaul.inventory_id)?.name || `ID: ${selectedOverhaul.inventory_id}`) 
+                        : '-'}`
+                    } />
+                  </ListItem>
+                </List>
+              </Grid>
+
+              {/* Placeholder for Personnel (Multiple) */}
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Person sx={{ mr: 1 }} /> Personel Terlibat
+                </Typography>
+                {detailPersonnel.length > 0 ? (
+                  <List dense>
+                    {detailPersonnel.map((person, index) => (
+                      <ListItem key={index}>
+                        <ListItemText primary={`${person.name} (NIP: ${person.nip || '-'}) - ${person.role || '-'}`} />
                       </ListItem>
                     ))}
                   </List>
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
-                    Belum ada riwayat untuk item ini.
+                  <Typography variant="body2" color="text.secondary">
+                    Tidak ada personel tambahan yang dicatat untuk overhaul ini.
                   </Typography>
                 )}
-              </Paper>
-            </Grid>
+              </Grid>
 
-            <Grid item xs={12}>
-              <Button
-                variant="contained"
-                sx={{ bgcolor: '#007BFF', '&:hover': { bgcolor: '#0056b3' }, mt: 2 }}
-                fullWidth
-                onClick={handleSave}
-              >
-                {editMode ? 'Perbarui Data' : 'Tambah Data'}
-              </Button>
+              {/* Placeholder for Materials (Multiple) */}
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Inventory sx={{ mr: 1 }} /> Daftar Material
+                </Typography>
+                {detailMaterials.length > 0 ? (
+                  <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Nama Material</TableCell>
+                          <TableCell>Kuantitas</TableCell>
+                          <TableCell>Satuan</TableCell>
+                          <TableCell align="right">Harga per Satuan</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {detailMaterials.map((material, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{material.name}</TableCell>
+                            <TableCell>{material.qty}</TableCell>
+                            <TableCell>{material.unit}</TableCell>
+                            <TableCell align="right">{material.harga ? `Rp ${material.harga.toLocaleString('id-ID')}` : '-'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Tidak ada material tambahan yang dicatat untuk overhaul ini.
+                  </Typography>
+                )}
+              </Grid>
+
+              {/* Placeholder for Progress History */}
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                  <History sx={{ mr: 1 }} /> Riwayat Progress
+                </Typography>
+                {detailProgress.length > 0 ? (
+                  <List dense>
+                    {detailProgress.map((p, index) => (
+                      <ListItem key={index}>
+                        <ListItemText 
+                          primary={`Progress: ${p.percentage}% pada ${p.date ? format(parseISO(p.date), 'dd/MM/yyyy HH:mm') : '-'}`} 
+                          secondary={p.notes || "Tidak ada catatan."} 
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Tidak ada riwayat progress yang dicatat untuk overhaul ini.
+                  </Typography>
+                )}
+              </Grid>
+
             </Grid>
-          </Grid>
-        </Box>
-      </Drawer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDetailDialog(false)}>Tutup</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Dialog Konfirmasi Hapus */}
       <Dialog
-        open={dialogOpen}
-        onClose={handleCloseDialog}
+        open={openConfirmDeleteDialog}
+        onClose={() => setOpenConfirmDeleteDialog(false)}
         aria-labelledby="alert-dialog-title"
         aria-describedby="alert-dialog-description"
       >
         <DialogTitle id="alert-dialog-title">{"Konfirmasi Penghapusan"}</DialogTitle>
         <DialogContent>
-          <DialogContentText id="alert-dialog-description">
-            Apakah Anda yakin ingin menghapus data overhaul ini? Tindakan ini tidak dapat dibatalkan.
-          </DialogContentText>
+          <Typography id="alert-dialog-description">
+            Anda yakin ingin menghapus overhaul "<strong>{itemToDelete?.name}</strong>"?
+            Tindakan ini tidak dapat dibatalkan.
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="primary">
-            Batal
-          </Button>
-          <Button onClick={handleConfirmDelete} color="error" autoFocus>
+          <Button onClick={() => setOpenConfirmDeleteDialog(false)}>Batal</Button>
+          <Button onClick={handleDelete} color="error" variant="contained" autoFocus>
             Hapus
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog for Editing History Item */}
-      <Dialog
-        open={editHistoryDialogOpen}
-        onClose={handleCloseEditHistoryDialog}
-        aria-labelledby="edit-history-dialog-title"
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle id="edit-history-dialog-title">Edit Riwayat</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Deskripsi Riwayat"
-            fullWidth
-            multiline
-            rows={4}
-            value={currentEditingHistory?.description || ''}
-            onChange={handleHistoryDescriptionChange}
-            variant="outlined"
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseEditHistoryDialog} color="primary">
-            Batal
-          </Button>
-          <Button onClick={handleSaveEditedHistory} color="primary" variant="contained">
-            Simpan Perubahan
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-
-      {/* Snackbar Notifikasi */}
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3000}
+        autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>

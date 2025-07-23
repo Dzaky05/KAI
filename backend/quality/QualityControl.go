@@ -15,29 +15,53 @@ import (
 )
 
 // Minimal Structs for Related Departments (add these near your QualityControl struct)
+// Ini adalah definisi struct dari package produksi dan overhaul yang relevan
+// agar bisa diakses di package quality untuk query database.
 type Produksi struct {
-	ProduksiID uint `gorm:"column:produksi_id;primaryKey"`
+	ProduksiID int    `json:"id" gorm:"column:produksi_id;primaryKey;autoIncrement"`
+	Name       string `json:"name" gorm:"column:name"`
+	Target     int    `json:"target" gorm:"column:target"`
+	Completed  int    `json:"completed" gorm:"column:completed"`
+	Status     string `json:"status" gorm:"column:status"`
+	StartDate  string `json:"startDate" gorm:"column:start_date"`
+	EndDate    string `json:"endDate" gorm:"column:end_date"`
+	// Tambahkan field lain jika diperlukan dari tabel produksi
 }
 
 type Overhaul struct {
-	OverhaulID uint `gorm:"column:overhaul_id;primaryKey"`
+	OverhaulID int    `json:"id" gorm:"column:overhaul_id;primaryKey;autoIncrement"`
+	Name       string `json:"name" gorm:"column:name"`
+	Status     string `json:"status" gorm:"column:status"`
+	Estimate   string `json:"estimasi" gorm:"column:estimate"` // Changed to string
+	Progress   int    `json:"progress" gorm:"column:progress"`
+	// Tambahkan field lain jika diperlukan dari tabel overhaul
 }
 
 type Rekayasa struct {
 	RekayasaID uint `gorm:"column:rekayasa_id;primaryKey"`
+	// Tambahkan field yang relevan dari tabel rekayasa jika ada
+	Name   string `gorm:"column:name"`
+	Status string `gorm:"column:status"`
+	// ... dll
 }
 
-type Inventory struct {
-	ID uint `gorm:"column:id;primaryKey"` // Assuming 'id' is the primary key column name
+type Inventory struct { // Digunakan juga untuk Kalibrasi jika ada relasi
+	ID   uint   `gorm:"column:id;primaryKey"` // Assuming 'id' is the primary key column name
+	Name string `gorm:"column:name"`
+	// ... dll
 }
 
 // Struct model sesuai dengan tabel quality_control dan relasi
 
 // QualityControl mewakili struktur data untuk entri QC
 type QualityControl struct {
-	gorm.Model     // Menyediakan ID (qc_id jika mapping benar), CreatedAt, UpdatedAt, DeletedAt
-	QcID       int `json:"id" gorm:"column:qc_id;primaryKey"`
+	// gorm.Model // Removed gorm.Model to avoid deleted_at column issue
+	ID        uint `gorm:"primaryKey;autoIncrement"` // Manual ID for GORM
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"` // Keep DeletedAt if soft deletes are truly intended and column exists
 
+	QcID        int       `gorm:"column:qc_id;uniqueIndex"`           // Changed to uniqueIndex if QcID is unique for QC entries
 	ProductName string    `json:"product" gorm:"column:product_name"` // Mapping product frontend ke product_name
 	BatchCode   string    `json:"batch" gorm:"column:batch_code"`     // Mapping batch frontend ke batch_code
 	Status      string    `json:"status" gorm:"column:status"`
@@ -53,19 +77,14 @@ type QualityControl struct {
 	InventoryID *uint `json:"inventory_id,omitempty" gorm:"column:inventory_id"` // Use pointer for nullable FK
 
 	// Relasi ke objek terkait (jika perlu dimuat)
-	// GORM akan menggunakan FK di struct ini untuk memuat objek terkait jika didefinisikan
-	// Produksi  *Produksi  `json:"produksi,omitempty"` // Asumsi struct Produksi sudah didefinisikan
-	// Overhaul  *Overhaul  `json:"overhaul,omitempty"` // Asumsi struct Overhaul sudah didefinisikan
-	// Rekayasa  *Rekayasa  `json:"rekayasa,omitempty"` // Asumsi struct Rekayasa sudah didefinisikan
+	// Produksi 	*Produksi 	`json:"produksi,omitempty"` // Asumsi struct Produksi sudah didefinisikan
+	// Overhaul 	*Overhaul 	`json:"overhaul,omitempty"` // Asumsi struct Overhaul sudah didefinisikan
+	// Rekayasa 	*Rekayasa 	`json:"rekayasa,omitempty"` // Asumsi struct Rekayasa sudah didefinisikan
 	// Inventory *Inventory `json:"inventory,omitempty"` // Asumsi struct Inventory sudah didefinisikan
 
 	// Catatan: Frontend menggunakan field `id` (string, e.g., "PRD-001") yang berbeda dengan `qc_id` (int).
-	// Anda perlu memutuskan bagaimana memetakan ini. Opsi:
-	// 1. Simpan kode frontend ("PRD-001") di kolom terpisah di tabel quality_control.
-	// 2. Generate kode frontend di backend saat mengambil data.
-	// 3. Gunakan ID database (`qc_id`) di frontend.
 	// Saya akan menggunakan `qc_id` sebagai primary key database dan field transient `FrontendID` untuk kode frontend jika perlu.
-	FrontendID string `json:"id" gorm:"-"` // Field transient untuk kode frontend
+	FrontendID string `json:"id" gorm:"-"` // Field transient untuk kode frontend, now explicitly json:"id"
 
 	// Field untuk pass rate (dihitung di Go)
 	PassRate int `json:"passRate" gorm:"-"` // Field transient
@@ -74,17 +93,29 @@ type QualityControl struct {
 func (QualityControl) TableName() string {
 	return "quality_control"
 }
-func (Inventory) TableName() string {
-	return "inventory"
-}
-func (Rekayasa) TableName() string {
-	return "rekayasa"
-}
 func (Produksi) TableName() string {
 	return "produksi"
 }
 func (Overhaul) TableName() string {
 	return "overhaul"
+}
+func (Rekayasa) TableName() string {
+	return "rekayasa"
+}
+func (Inventory) TableName() string {
+	return "inventory"
+}
+
+var db *gorm.DB
+
+func Init(database *gorm.DB) {
+	db = database
+	log.Println("Quality Control module initialized.")
+	// Opsional: AutoMigrate jika Anda ingin GORM membuat/memperbarui tabel
+	// err := db.AutoMigrate(&QualityControl{}, &Produksi{}, &Overhaul{}, &Rekayasa{}, &Inventory{})
+	// if err != nil {
+	// 	log.Printf("Error auto-migrating Quality Control related tables: %v", err)
+	// }
 }
 
 // parseFrontendID parses a frontend ID string into department prefix and numeric ID.
@@ -105,8 +136,6 @@ func parseFrontendID(frontendID string) (departmentPrefix string, numericID int,
 // findProduksiIDByNumericID finds the database ID for a Produksi item by its numeric ID.
 func findProduksiIDByNumericID(numericID int) (*uint, error) {
 	var produksi Produksi
-	// Assuming a column 'numeric_id' or similar in the 'produksi' table maps to the frontend numeric part.
-	// If the frontend numeric ID directly maps to the primary key 'produksi_id', use that instead.
 	// Example assumes mapping numericID to 'produksi_id':
 	result := db.Select("produksi_id").First(&produksi, numericID)
 	if result.Error != nil {
@@ -115,7 +144,8 @@ func findProduksiIDByNumericID(numericID int) (*uint, error) {
 		}
 		return nil, fmt.Errorf("error finding Produksi with ID %d: %v", numericID, result.Error)
 	}
-	return &produksi.ProduksiID, nil
+	id := uint(produksi.ProduksiID) // Convert int to uint
+	return &id, nil
 }
 
 // findOverhaulIDByNumericID finds the database ID for an Overhaul item by its numeric ID.
@@ -129,7 +159,8 @@ func findOverhaulIDByNumericID(numericID int) (*uint, error) {
 		}
 		return nil, fmt.Errorf("error finding Overhaul with ID %d: %v", numericID, result.Error)
 	}
-	return &overhaul.OverhaulID, nil
+	id := uint(overhaul.OverhaulID) // Convert int to uint
+	return &id, nil
 }
 
 // findRekayasaIDByNumericID finds the database ID for a Rekayasa item by its numeric ID.
@@ -163,6 +194,9 @@ func findInventoryIDByNumericID(numericID int) (*uint, error) {
 // Helper function to generate frontend ID
 func generateFrontendID(qc *QualityControl) string {
 	prefix := ""
+	// Use QcID for the numeric part, as it's the primary key for QualityControl
+	numericPart := strconv.Itoa(qc.QcID)
+
 	switch qc.Department {
 	case "Production":
 		prefix = "PRD"
@@ -175,9 +209,7 @@ func generateFrontendID(qc *QualityControl) string {
 	default:
 		prefix = "QC" // Default prefix
 	}
-	// Ini hanya contoh, Anda mungkin perlu mekanisme ID sequence yang lebih robust per departemen
-	// atau ambil ID terkait dari FK. Untuk kesederhanaan, gunakan ID database.
-	return prefix + "-" + strconv.Itoa(qc.QcID)
+	return prefix + "-" + numericPart
 }
 
 // Helper function to calculate pass rate
@@ -189,24 +221,178 @@ func calculatePassRate(qc *QualityControl) {
 	}
 }
 
-// getAllQualityControl mengambil semua entri QC dari database beserta relasi (jika diperlukan)
+// Helper function to map product names to departments
+func mapProductToDepartment(productName string) string {
+	lowerProductName := strings.ToLower(productName)
+	if strings.Contains(lowerProductName, "overhaul") || strings.Contains(lowerProductName, "point machine") {
+		return "Overhaul"
+	}
+	if strings.Contains(lowerProductName, "radio lokomotif") || strings.Contains(lowerProductName, "way station") || strings.Contains(lowerProductName, "sentranik") {
+		return "Production"
+	}
+	if strings.Contains(lowerProductName, "control panel") || strings.Contains(lowerProductName, "signal system") {
+		return "Rekayasa"
+	}
+	if strings.Contains(lowerProductName, "battery pack") || strings.Contains(lowerProductName, "cable set") || strings.Contains(lowerProductName, "kalibrasi") {
+		return "Kalibrasi"
+	}
+	return "Unknown" // Default if no match
+}
+
+// getAllQualityControl mengambil semua entri QC dari database,
+// serta menggabungkan dan memformat data dari Produksi dan Overhaul.
 func getAllQualityControl(c *gin.Context) {
-	var qcEntries []QualityControl
-	// Menggunakan Preload jika Anda mendefinisikan relasi ke tabel lain di struct QualityControl
-	// if result := db.Preload(clause.Associations).Find(&qcEntries); result.Error != nil {
-	if result := db.Find(&qcEntries); result.Error != nil {
-		log.Printf("Error saat mengambil data QC: %v", result.Error)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data Quality Control", "details": result.Error.Error()})
-		return
+	var allQCEntries []QualityControl
+
+	// 1. Ambil data dari tabel `quality_control` itu sendiri
+	var qcFromDB []QualityControl
+	if result := db.Find(&qcFromDB); result.Error != nil {
+		log.Printf("Error fetching quality_control entries: %v", result.Error)
+		// Lanjutkan meskipun ada error, mungkin data departemen lain masih bisa diambil
+	}
+	for i := range qcFromDB {
+		// For items directly from quality_control table, QcID is their primary key
+		// and FrontendID is generated based on it.
+		qcFromDB[i].FrontendID = generateFrontendID(&qcFromDB[i])
+		calculatePassRate(&qcFromDB[i])
+		allQCEntries = append(allQCEntries, qcFromDB[i])
 	}
 
-	// Isi field transient FrontendID dan PassRate
-	for i := range qcEntries {
-		qcEntries[i].FrontendID = generateFrontendID(&qcEntries[i]) // Generate ID frontend
-		calculatePassRate(&qcEntries[i])                            // Hitung pass rate
+	// 2. Ambil dan format data dari tabel `produksi`
+	var produksiItems []Produksi
+	if result := db.Find(&produksiItems); result.Error != nil {
+		log.Printf("Error fetching produksi items: %v", result.Error)
+	} else {
+		for _, item := range produksiItems {
+			status := item.Status
+			if status == "Selesai" {
+				status = "Lulus" // Map 'Selesai' to 'Lulus' for QC
+			}
+
+			// Determine department based on product name, even if from 'produksi' table
+			determinedDepartment := mapProductToDepartment(item.Name)
+			if determinedDepartment == "Unknown" {
+				determinedDepartment = "Production" // Default to Production if product name doesn't clearly indicate another department
+			}
+
+			qcEntry := QualityControl{
+				QcID:        item.ProduksiID, // Set QcID with ProduksiID for uniqueness
+				ProductName: item.Name,
+				BatchCode:   fmt.Sprintf("BATCH-%s-%d", item.StartDate[:4], item.ProduksiID), // Example batch
+				Status:      status,
+				TestedCount: item.Target,
+				PassedCount: item.Completed,
+				QcDate:      parseDate(item.EndDate), // Convert string date to time.Time
+				Department:  determinedDepartment,
+				ProduksiID:  uintPtr(uint(item.ProduksiID)), // Corrected typo here
+			}
+			qcEntry.FrontendID = fmt.Sprintf("PRD-%d", item.ProduksiID) // Generate frontend ID
+			calculatePassRate(&qcEntry)
+			allQCEntries = append(allQCEntries, qcEntry)
+		}
 	}
 
-	c.JSON(http.StatusOK, qcEntries)
+	// 3. Ambil dan format data dari tabel `overhaul`
+	var overhaulItems []Overhaul
+	if result := db.Find(&overhaulItems); result.Error != nil {
+		log.Printf("Error fetching overhaul items: %v", result.Error)
+	} else {
+		for _, item := range overhaulItems {
+			status := item.Status
+			if status == "Selesai" {
+				status = "Lulus" // Map 'Selesai' to 'Lulus' for QC
+			}
+
+			determinedDepartment := mapProductToDepartment(item.Name)
+			if determinedDepartment == "Unknown" {
+				determinedDepartment = "Overhaul" // Default to Overhaul if product name doesn't clearly indicate another department
+			}
+
+			qcEntry := QualityControl{
+				QcID:        item.OverhaulID, // Set QcID with OverhaulID for uniqueness
+				ProductName: item.Name,
+				BatchCode:   fmt.Sprintf("BATCH-%s-%d", item.Estimate[:4], item.OverhaulID), // Example batch, use string slice
+				Status:      status,
+				TestedCount: 100, // Assuming 100 as total for progress-based QC
+				PassedCount: item.Progress,
+				QcDate:      parseDate(item.Estimate), // Parse string date
+				Department:  determinedDepartment,
+				OverhaulID:  uintPtr(uint(item.OverhaulID)), // Set FK
+			}
+			qcEntry.FrontendID = fmt.Sprintf("OVH-%d", item.OverhaulID) // Generate frontend ID
+			calculatePassRate(&qcEntry)
+			allQCEntries = append(allQCEntries, qcEntry)
+		}
+	}
+
+	// 4. Ambil dan format data dari tabel `rekayasa` (placeholder)
+	// Jika Anda memiliki tabel rekayasa, lakukan hal serupa:
+	/*
+		var rekayasaItems []Rekayasa
+		if result := db.Find(&rekayasaItems); result.Error != nil {
+			log.Printf("Error fetching rekayasa items: %v", result.Error)
+		} else {
+			for _, item := range rekayasaItems {
+				qcEntry := QualityControl{
+					QcID:        int(item.RekayasaID), // If RekayasaID is unique and non-zero
+					ProductName: item.Name,
+					BatchCode:   "RKY-BATCH", // Sesuaikan
+					Status:      item.Status, // Sesuaikan
+					TestedCount: 0,           // Sesuaikan
+					PassedCount: 0,           // Sesuaikan
+					QcDate:      time.Now(),  // Sesuaikan
+					Department:  "Rekayasa",
+					RekayasaID:  &item.RekayasaID,
+				}
+				qcEntry.FrontendID = fmt.Sprintf("RKY-%d", item.RekayasaID)
+				calculatePassRate(&qcEntry)
+				allQCEntries = append(allQCEntries, qcEntry)
+			}
+		}
+	*/
+
+	// 5. Ambil dan format data dari tabel `kalibrasi` (placeholder)
+	// Jika Anda memiliki tabel kalibrasi, lakukan hal serupa:
+	/*
+		var kalibrasiItems []Inventory // Asumsi Kalibrasi terkait dengan Inventory
+		if result := db.Where("department = ?", "Kalibrasi").Find(&kalibrasiItems); result.Error != nil { // Contoh filter
+			log.Printf("Error fetching kalibrasi items: %v", result.Error)
+		} else {
+			for _, item := range kalibrasiItems {
+				qcEntry := QualityControl{
+					QcID:        int(item.ID), // If Inventory.ID is unique and non-zero
+					ProductName: item.Name,
+					BatchCode:   "KAL-BATCH", // Sesuaikan
+					Status:      "Lulus",     // Sesuaikan
+					TestedCount: 0,           // Sesuaikan
+					PassedCount: 0,           // Sesuaikan
+					QcDate:      time.Now(),  // Sesuaikan
+					Department:  "Kalibrasi",
+					InventoryID: &item.ID,
+				}
+				qcEntry.FrontendID = fmt.Sprintf("KAL-%d", item.ID)
+				calculatePassRate(&qcEntry)
+				allQCEntries = append(allQCEntries, qcEntry)
+			}
+		}
+	*/
+
+	c.JSON(http.StatusOK, allQCEntries)
+}
+
+// parseDate helper function to parse string date to time.Time
+func parseDate(dateStr string) time.Time {
+	t, err := time.Parse("2006-01-02", dateStr) // Assuming "YYYY-MM-DD" format
+	if err != nil {
+		log.Printf("Warning: Could not parse date string '%s': %v", dateStr, err)
+		return time.Time{} // Return zero time on error
+	}
+	return t
+}
+
+// uintPtr helper function to return a pointer to a uint
+func uintPtr(i uint) *uint {
+	return &i
 }
 
 // getQualityControlByID mengambil entri QC berdasarkan ID database
@@ -460,7 +646,7 @@ func updateQualityControl(c *gin.Context) {
 			case "KAL": // Kalibrasi (assuming Kalibrasi might link to Inventory)
 				inventoryID, err := findInventoryIDByNumericID(numericID)
 				if err != nil {
-					log.Printf("Error finding Inventory with numeric ID %d (for Kalibrasi?) during update: %v", numericID, err)
+					log.Printf("Error finding Inventory with numeric ID %d (for Kalibrasi?): %v", numericID, err)
 				} else {
 					item.InventoryID = inventoryID
 				}
@@ -501,6 +687,7 @@ func updateQualityControl(c *gin.Context) {
 
 	c.JSON(http.StatusOK, savedEntry) // Kirim kembali entri yang diperbarui
 }
+
 func getQualityControlByFrontendID(c *gin.Context) {
 	frontendCode := c.Param("frontendCode")
 	deptPrefix, numericID, err := parseFrontendID(frontendCode)
@@ -524,6 +711,7 @@ func getQualityControlByFrontendID(c *gin.Context) {
 
 	c.JSON(http.StatusOK, entry)
 }
+
 func getDepartmentFromPrefix(prefix string) string {
 	switch strings.ToUpper(prefix) {
 	case "PRD":
@@ -539,17 +727,12 @@ func getDepartmentFromPrefix(prefix string) string {
 	}
 }
 
-var db *gorm.DB
-
-func Init(database *gorm.DB) {
-	db = database
-
-}
-
+// RegisterRoutes mendaftarkan rute API untuk modul Quality Control
 func RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/", getAllQualityControl)
 	rg.GET("/:id", getQualityControlByID)
 	rg.POST("/", createQualityControl)
 	rg.PUT("/:id", updateQualityControl)
 	rg.DELETE("/:id", deleteQualityControl)
+	rg.GET("/frontend/:frontendCode", getQualityControlByFrontendID) // New endpoint for frontend ID search
 }

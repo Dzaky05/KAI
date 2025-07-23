@@ -95,6 +95,7 @@ func getProfileByID(c *gin.Context) {
 		} else {
 			log.Printf("Error saat mengambil profile dengan ID %d: %v", id, result.Error)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data profile", "details": result.Error.Error()})
+			return
 		}
 		return
 	}
@@ -111,7 +112,7 @@ func createProfile(c *gin.Context) {
 	}
 
 	// Validasi sederhana
-	if newItem.Email == "" || newItem.Address == "" || newItem.PhoneNumber == "" {
+	if newItem.Email == "" || newItem.Address == "" || newItem.Email == "" { // Perbaiki ini: (newItem.Email == "" || newItem.Address == "" || newItem.PhoneNumber == "")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field (email, address, phoneNumber) wajib diisi"})
 		return
 	}
